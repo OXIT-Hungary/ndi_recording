@@ -16,4 +16,4 @@ services:
       - /var/run/dbus:/var/run/dbus
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /home/bvsc-oxit/app/recording:/app/output/
+      - /home/bvsc-oxit/RECORDINGS:/app/output/

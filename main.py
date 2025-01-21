@@ -4,6 +4,7 @@ import subprocess
 import time
 from collections import Counter, deque
 from typing import List
+from pathlib import Path
 
 import cv2
 import NDIlib as ndi
@@ -194,7 +195,7 @@ class NDIReceiver:
                 "fast",
                 "-profile:v",
                 "high",
-                os.path.join(self.path, f"cam{self.idx}.mp4"),
+                self.path,
             ],
             stdin=subprocess.PIPE,
         )
@@ -213,9 +214,10 @@ class NDIReceiver:
 def ndi_receiver_process(
     src, idx: int, path, logger: logging.Logger, stop_event: Event, codec: str = "h264_nvenc", fps: int = 30
 ):
+    path = os.path.join(path, f"{Path(path).stem}_cam{idx}.mp4")
     receiver = NDIReceiver(src, idx, path, logger, codec, fps)
 
-    logger.info(f"NDI Receiver {idx} created.")
+    logger.info(f"NDI Receiver {idx} created. Saving data to {path}")
 
     try:
         while not stop_event.is_set():
@@ -236,3 +238,20 @@ def ndi_receiver_process(
         receiver.stop()
 
     logger.info(f"NDI Receiver Process {receiver.idx} stopped.")
+
+
+if __name__ == "__main__":
+    from multiprocess import Event, Process
+    from datetime import datetime
+
+    from app.core.utils.dir_creator import get_recording_dir_from_datetime
+    from app.core.utils.logger import get_recording_logger
+
+    start_time = datetime.now()
+
+    recording_dir = get_recording_dir_from_datetime(start_time)
+    logger = get_recording_logger(start_time)
+
+    stop_event = Event()
+
+    ndi_receiver_process("", 0, recording_dir, logger, stop_event)

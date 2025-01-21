@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 
 API_DIR = f"{os.getcwd()}/output/api"
-RECORDING_DIR = f"{os.getcwd()}/output/recordings"
+RECORDING_DIR = f"{os.getcwd()}/output"
 os.makedirs(API_DIR, exist_ok=True)
 os.makedirs(RECORDING_DIR, exist_ok=True)
 
