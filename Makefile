@@ -32,5 +32,5 @@ run:
 	sudo docker run -it --rm --gpus all --runtime=nvidia --network host --privileged \
 	-v /var/run/dbus:/var/run/dbus \
 	-v /run/avahi-daemon/socket:/run/avahi-daemon/socket \
-	-v /home/bvsc-oxit/RECORDINGS:/app/output/ \
+	-v /srv/sftp/RECORDINGS:/app/output/ \
 	ndi_record:`git rev-parse --abbrev-ref HEAD | sed 's/[^a-zA-Z0-9_\-]/_/g'`
