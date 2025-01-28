@@ -30,23 +30,20 @@ def decide_band_with_most_players(boxes, labels, scores, first_band_end, middle_
     bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
     centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
     
-    band_counts = {
-        "first_band": 0,
-        "middle_band": 0,
-        "third_band": 0
-    }
-
+    band_counts = [0, 0, 0]  # Index 0: first_band, Index 1: middle_band, Index 2: third_band
+    
     for x in centers_x:
         if x < first_band_end:
-            band_counts["first_band"] += 1
+            band_counts[0] += 1  
         elif x < middle_band_end:
-            band_counts["middle_band"] += 1
+            band_counts[1] += 1  
         else:
-            band_counts["third_band"] += 1
+            band_counts[2] += 1  
     
-    most_players_band = max(band_counts, key=band_counts.get)
     
-    return most_players_band, band_counts
+    most_players_band_index = np.argmax(band_counts)
+    
+    return most_players_band_index, band_counts
 
 
 def update_frequency(window, freq_counter, bucket, max_window_size=10):
@@ -119,7 +116,7 @@ def pano_process(
             )
 
             # most_populated_bucket = process_buckets(boxes, labels, scores, bucket_width)
-            most_players_band, band_counts = decide_band_with_most_players(boxes, labels, scores, first_band_end, middle_band_end)
+            most_players_band, _ = decide_band_with_most_players(boxes, labels, scores, first_band_end, middle_band_end)
 
             mode = update_frequency(window, freq_counter, most_players_band)
 
