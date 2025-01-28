@@ -13,16 +13,40 @@ import onnxruntime
 from multiprocess import Event
 
 
-def process_buckets(boxes, labels, scores, bucket_width):
-    buckets = {0: 0, 1: 0, 2: 0}
+
+def split_the_waterpolo_court_panorama_image(n, first_percent, middle_percent):
+    # n: width of the panorama image
+    # first_percent: integer between 20-45%
+    # first test: 40%-20%-40%; try to reduce the middle band
+    
+    first_part = int(n * (first_percent / 100))
+    middle_part = int(n * (middle_percent / 100))
+    third_part = n - first_part - middle_part
+    
+    return first_part, middle_part, third_part
+
+
+def decide_band_with_most_players(boxes, labels, scores, first_band_end, middle_band_end):
     bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
     centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
+    
+    band_counts = {
+        "first_band": 0,
+        "middle_band": 0,
+        "third_band": 0
+    }
 
-    for center_x in centers_x:
-        bucket_idx = center_x // bucket_width
-        buckets[bucket_idx] += 1
-
-    return max(buckets, key=lambda k: buckets[k])
+    for x in centers_x:
+        if x < first_band_end:
+            band_counts["first_band"] += 1
+        elif x < middle_band_end:
+            band_counts["middle_band"] += 1
+        else:
+            band_counts["third_band"] += 1
+    
+    most_players_band = max(band_counts, key=band_counts.get)
+    
+    return most_players_band, band_counts
 
 
 def update_frequency(window, freq_counter, bucket, max_window_size=10):
@@ -57,7 +81,12 @@ def pano_process(
 
     frame_size = np.array([[2200, 730]])
     sleep_time = 1 / fps
-    bucket_width = 2200 // 3
+    
+    first_percent, middle_percent = 40, 20 
+
+    first_band_end, middle_part, _ = split_the_waterpolo_court_panorama_image(frame_size[0,0], first_percent, middle_percent)
+
+    middle_band_end = first_band_end + middle_part
 
     onnx_session = onnxruntime.InferenceSession(onnx_file, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
     logger.info(f"ONNX Model Device: {onnxruntime.get_device()}")
@@ -89,8 +118,10 @@ def pano_process(
                 },
             )
 
-            most_populated_bucket = process_buckets(boxes, labels, scores, bucket_width)
-            mode = update_frequency(window, freq_counter, most_populated_bucket)
+            # most_populated_bucket = process_buckets(boxes, labels, scores, bucket_width)
+            most_players_band, band_counts = decide_band_with_most_players(boxes, labels, scores, first_band_end, middle_band_end)
+
+            mode = update_frequency(window, freq_counter, most_players_band)
 
             # draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
 
