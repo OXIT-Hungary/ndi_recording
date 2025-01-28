@@ -2,169 +2,72 @@ import logging
 import os
 import subprocess
 import time
-from collections import Counter, deque
-from typing import List
-from pathlib import Path
 
-import cv2
-import NDIlib as ndi
-import numpy as np
-import onnxruntime
-from multiprocess import Event
+from datetime import datetime, timedelta
+from typing import Tuple
+from tqdm import tqdm
+
+from src.camera.camera_system import CameraSystem
 
 
-def process_buckets(boxes, labels, scores, bucket_width):
-    buckets = {0: 0, 1: 0, 2: 0}
-    bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
-    centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
-
-    for center_x in centers_x:
-        bucket_idx = center_x // bucket_width
-        buckets[bucket_idx] += 1
-
-    return max(buckets, key=lambda k: buckets[k])
+out_path = f"{os.getcwd()}/output/{datetime.now().strftime('%Y%m%d_%H%M')}"
+os.makedirs(out_path, exist_ok=True)
 
 
-def update_frequency(window, freq_counter, bucket, max_window_size=10):
-    """
-    Update the sliding window and frequency counter to track the most frequent bucket.
-    """
-    window.append(bucket)
-    freq_counter[bucket] += 1
+def create_logger():
+    l = logging.getLogger("ndi_logger")
+    l.setLevel(logging.DEBUG)
 
-    if len(window) > max_window_size:
-        oldest = window.popleft()
-        freq_counter[oldest] -= 1
-        if freq_counter[oldest] == 0:
-            del freq_counter[oldest]
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
 
-    # Return the most common bucket
-    return freq_counter.most_common(1)[0][0]
+    file_handler = logging.FileHandler(f"{out_path}/run.log", mode="w")
+    file_handler.setLevel(logging.DEBUG)
 
+    formatter = logging.Formatter(
+        fmt="{asctime} - [{levelname}]: {message}",
+        style="{",
+    )
 
-def pano_process(
-    url: str,
-    ptz_urls: List,
-    onnx_file: str,
-    stop_event: Event,
-    start_event: Event,
-    logger: logging.Logger,
-    fps: int = 15,
-):
-    """ """
+    console_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
 
-    position = 1
+    l.addHandler(console_handler)
+    l.addHandler(file_handler)
 
-    frame_size = np.array([[2200, 730]])
-    sleep_time = 1 / fps
-    bucket_width = 2200 // 3
-
-    onnx_session = onnxruntime.InferenceSession(onnx_file, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-    logger.info(f"ONNX Model Device: {onnxruntime.get_device()}")
-
-    window = deque()
-    freq_counter = Counter()
-
-    video_capture = cv2.VideoCapture(url)
-
-    start_event.set()
-    logger.info(f"Process Pano - Event Set!")
-    try:
-        while not stop_event.is_set():
-            ret, frame = video_capture.read()
-
-            if not ret:
-                logger.warning(f"No panorama frame captured.")
-                raise KeyboardInterrupt()
-
-            frame = frame[420:1150, 1190:3390]
-            img = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
-            img = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0)
-
-            labels, boxes, scores = onnx_session.run(
-                output_names=None,
-                input_feed={
-                    'images': img,
-                    "orig_target_sizes": frame_size,
-                },
-            )
-
-            most_populated_bucket = process_buckets(boxes, labels, scores, bucket_width)
-            mode = update_frequency(window, freq_counter, most_populated_bucket)
-
-            # draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
-
-            if position != mode:
-                position = mode
-                for url in ptz_urls:
-                    command = (
-                        rf'szCmd={{'
-                        rf'"SysCtrl":{{'
-                        rf'"PtzCtrl":{{'
-                        rf'"nChanel":0,"szPtzCmd":"preset_call","byValue":{mode}'
-                        rf'}}'
-                        rf'}}'
-                        rf'}}'
-                    )
-
-                    subprocess.run(
-                        [
-                            "curl",
-                            f"http://{url}/ajaxcom",
-                            "--data-raw",
-                            command,
-                        ],
-                        check=False,
-                        capture_output=False,
-                        text=False,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-
-            time.sleep(sleep_time)
-
-    except KeyboardInterrupt:
-        video_capture.release()
-
-    logger.info(f"RTSP Receiver Process stopped.")
+    return l
 
 
-class NDIReceiver:
-    def __init__(self, src, idx: int, path, logger: logging.Logger, codec="h264_nvenc", fps: int = 30) -> None:
-        self.idx = idx
-        self.codec = codec
-        self.fps = fps
-        self.path = path
-        self.logger = logger
+logger = create_logger()
 
-        self.receiver = self.create_receiver(src)
-        self.ffmpeg_process = self.start_ffmpeg_process()
 
-    def create_receiver(self, src):
+class VideoWriter:
+    def __init__(
+        self,
+        path: str,
+        resolution: str = "1920x1080",
+        codec: str = "h264_nvenc",
+        fps: int = 30,
+        bitrate: int = 30000,
+        *args,
+    ) -> None:
 
-        ndi_recv_create = ndi.RecvCreateV3()
-        ndi_recv_create.color_format = ndi.RECV_COLOR_FORMAT_BGRX_BGRA
-        receiver = ndi.recv_create_v3(ndi_recv_create)
-        if receiver is None:
-            raise RuntimeError("Failed to create NDI receiver")
-        ndi.recv_connect(receiver, src)
+        self._ffmpeg_process = self._start_ffmpeg_process(
+            path=path,
+            resolution=resolution,
+            codec=codec,
+            fps=fps,
+            bitrate=bitrate,
+        )
 
-        return receiver
-
-    def get_frame(self):
-
-        t, v, _, _ = ndi.recv_capture_v3(self.receiver, 1000)
-        frame = None
-        if t == ndi.FRAME_TYPE_VIDEO:
-            # logger.info("Frame received")
-            frame = np.copy(v.data[:, :, :3])
-            ndi.recv_free_video_v2(self.receiver, v)
-            # cv2.imwrite('output/asd.png', frame)
-            # print(frame.shape)
-
-        return frame, t
-
-    def start_ffmpeg_process(self):
+    def _start_ffmpeg_process(
+        self,
+        path: str,
+        resolution: str = "1920x1080",
+        codec: str = "h264_nvenc",
+        fps: int = 30,
+        bitrate: int = 30000,
+    ):
         return subprocess.Popen(
             [
                 "ffmpeg",
@@ -176,9 +79,9 @@ class NDIReceiver:
                 "-pix_fmt",
                 "bgr24",
                 "-s",
-                "1920x1080",
+                resolution,
                 "-r",
-                str(self.fps),
+                str(fps),
                 "-hwaccel",
                 "cuda",
                 "-hwaccel_output_format",
@@ -186,72 +89,134 @@ class NDIReceiver:
                 "-i",
                 "pipe:",
                 "-c:v",
-                self.codec,
+                codec,
                 "-pix_fmt",
                 "yuv420p",
                 "-b:v",
-                "40000k",
+                f"{bitrate}k",
                 "-preset",
                 "fast",
                 "-profile:v",
                 "high",
-                self.path,
+                path,
             ],
             stdin=subprocess.PIPE,
         )
 
-    def stop(self) -> None:
-        if self.ffmpeg_process.stdin:
+    def write(self, frame) -> None:
+        try:
+            self._ffmpeg_process.stdin.write(frame.tobytes())
+            self._ffmpeg_process.stdin.flush()
+        except BrokenPipeError as e:
+            logger.error(f"Broken pipe error while writing frame: {e}")
+
+    def __del__(self) -> None:
+        if self._ffmpeg_process.stdin:
             try:
-                self.ffmpeg_process.stdin.flush()
-                self.ffmpeg_process.stdin.close()
+                self._ffmpeg_process.stdin.flush()
+                self._ffmpeg_process.stdin.close()
             except BrokenPipeError as e:
                 self.logger.error(f"Broken pipe error while closing stdin: {e}")
 
-        self.ffmpeg_process.wait()
+        self._ffmpeg_process.wait()
 
 
-def ndi_receiver_process(
-    src, idx: int, path, logger: logging.Logger, stop_event: Event, codec: str = "h264_nvenc", fps: int = 30
-):
-    path = os.path.join(path, f"{Path(path).stem}_cam{idx}.mp4")
-    receiver = NDIReceiver(src, idx, path, logger, codec, fps)
+def schedule(start_time: datetime, end_time: datetime) -> None:
 
-    logger.info(f"NDI Receiver {idx} created. Saving data to {path}")
+    sleep_time = int((start_time - datetime.now()).total_seconds())
+    if sleep_time <= 0:
+        return
+
+    hours, remainder = divmod(sleep_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    logger.info(
+        f"Waiting for {hours:02d}:{minutes:02d}:{seconds:02d} (hh:mm:ss) until {end_time.strftime('%Y.%m.%d %H:%M:%S')}."
+    )
+
+    with tqdm(total=sleep_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
+        for _ in range(int(sleep_time)):
+            time.sleep(1)
+            progress.update(1)
+
+    logger.info(f"Finished waiting.")
+
+
+def parse_arguments(args) -> Tuple[datetime]:
+
+    now = datetime.now()
+
+    start_time = now
+    if args.start_time:
+        splt = args.start_time.split("_")
+        if len(splt) == 1:
+            h, m = splt[0].split(":")
+            start_time = datetime.strptime(f"{now.year}.{now.month}.{now.day}_{h}:{m}", "%Y.%m.%d_%H:%M")
+        else:
+            start_time = datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M")
+
+    end_time = None
+    if args.end_time:
+        splt = args.end_time.split("_")
+        if len(splt) == 1:
+            h, m = splt[0].split(":")
+            end_time = datetime.strptime(f"{now.year}.{now.month}.{now.day}_{h}:{m}", "%Y.%m.%d_%H:%M")
+        else:
+            end_time = datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M")
+    elif args.duration:
+        duration = datetime.strptime(args.duration, "%H:%M").time()
+        end_time = start_time + timedelta(hours=duration.hour, minutes=duration.minute)
+    else:
+        duration = datetime.strptime("01:45", "%H:%M").time()
+        end_time = start_time + timedelta(hours=duration.hour, minutes=duration.minute)
+
+    return start_time, end_time
+
+
+def main(start_time: datetime, end_time: datetime) -> int:
+
+    schedule(start_time, end_time)
+
+    camera_system = CameraSystem()
+    camera_system.start_tracking()
+
+    writers = [
+        VideoWriter(path="ptz1.mp4", resolution="1920x1080", bitrate=40000),  # PTZ 1
+        VideoWriter(path="ptz2.mp4", resolution="1920x1080", bitrate=40000),  # PTZ 2
+        VideoWriter(path="pano.mp4", resolution="", bitrate=6000),  # Pano
+    ]
 
     try:
-        while not stop_event.is_set():
-            frame, t = receiver.get_frame()
-            if frame is not None:
-                try:
-                    receiver.ffmpeg_process.stdin.write(frame.tobytes())
-                    receiver.ffmpeg_process.stdin.flush()
-                except BrokenPipeError as e:
-                    logger.error(f"Broken pipe error while writing frame: {e}")
-                    break
-                except Exception as e:
-                    logger.error(f"Error in NDI Receiver Process {idx}: {e}")
-                    break
-            else:
-                logger.warning(f"No video frame captured. Frame type: {t}")
-    except KeyboardInterrupt:
-        receiver.stop()
+        delta_time = int((end_time - start_time).total_seconds())
+        with tqdm(total=delta_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
+            for _ in range(delta_time):
+                frames = camera_system.get_frames()
+                for idx, writer in enumerate(writers):
+                    writer.write(frames[idx])
 
-    logger.info(f"NDI Receiver Process {receiver.idx} stopped.")
+                time.sleep(1)
+                progress.update(1)
+
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received. Terminating processes...")
+
+    finally:
+        camera_system.stop_tracking()
+
+    logger.info("Finished recording.")
+
+    return 0
 
 
 if __name__ == "__main__":
-    from multiprocess import Event, Process
-    from datetime import datetime
+    import argparse
 
-    from app.core.utils.dir_creator import get_recording_dir_from_datetime
-    from app.core.utils.logger import get_recording_logger
+    parser = argparse.ArgumentParser(prog="NDI Stream Recorder", description="Schedule a script to run based on time.")
 
-    start_time = datetime.now()
+    parser.add_argument("--start_time", type=str, help="Start time in HH:MM format. e.g. (18:00)", required=False)
+    parser.add_argument("--end_time", type=str, help="End time in HH:MM format. e.g. (18:00)", required=False)
+    parser.add_argument("--duration", type=str, help="Duration in HH:MM format. e.g. (18:00)", required=False)
 
-    recording_dir = get_recording_dir_from_datetime(start_time)
-    logger = get_recording_logger(start_time)
+    args = parse_arguments(parser.parse_args())
 
-    stop_event = Event()
-
-    ndi_receiver_process("", 0, recording_dir, logger, stop_event)
+    main(*args)
