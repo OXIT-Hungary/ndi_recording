@@ -28,6 +28,10 @@ def split_the_waterpolo_court_panorama_image(n, first_percent, middle_percent):
 
 def decide_band_with_most_players(boxes, labels, scores, first_band_end, middle_band_end):
     bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
+
+    if len(bboxes_player) == 0:
+        return 1, [0, 0, 0]  # No players, default to middle band
+
     centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
     
     band_counts = [0, 0, 0]  # Index 0: first_band, Index 1: middle_band, Index 2: third_band
@@ -79,7 +83,7 @@ def pano_process(
     frame_size = np.array([[2200, 730]])
     sleep_time = 1 / fps
     
-    first_percent, middle_percent = 40, 20 
+    first_percent, middle_percent = 41, 18
 
     first_band_end, middle_part, _ = split_the_waterpolo_court_panorama_image(frame_size[0,0], first_percent, middle_percent)
 

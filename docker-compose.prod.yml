@@ -1,6 +1,6 @@
 services:
   web:
-    image: ndi_record:master
+    image: ndi_record
     runtime: nvidia
     network_mode: host
     privileged: true
