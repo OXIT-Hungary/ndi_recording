@@ -18,6 +18,14 @@
                 "01:45"
             ],
             "console": "integratedTerminal"
+        },
+        {
+            "name": "test.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py",
+            "args": [],
+            "console": "integratedTerminal"
         }
     ]
 }
