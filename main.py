@@ -1,44 +1,19 @@
-import logging
-import os
 import subprocess
 import time
 
-from datetime import datetime, timedelta
-from typing import Tuple
+from datetime import datetime
 from tqdm import tqdm
+import onnxruntime
+import cv2
+import numpy as np
+from collections import deque, Counter
 
+from src.config import Config, load_config
 from src.camera.camera_system import CameraSystem
+from src.utils.logger import setup_logger
 
 
-out_path = f"{os.getcwd()}/output/{datetime.now().strftime('%Y%m%d_%H%M')}"
-os.makedirs(out_path, exist_ok=True)
-
-
-def create_logger():
-    l = logging.getLogger("ndi_logger")
-    l.setLevel(logging.DEBUG)
-
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-
-    file_handler = logging.FileHandler(f"{out_path}/run.log", mode="w")
-    file_handler.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter(
-        fmt="{asctime} - [{levelname}]: {message}",
-        style="{",
-    )
-
-    console_handler.setFormatter(formatter)
-    file_handler.setFormatter(formatter)
-
-    l.addHandler(console_handler)
-    l.addHandler(file_handler)
-
-    return l
-
-
-logger = create_logger()
+logger = None
 
 
 class VideoWriter:
@@ -142,57 +117,87 @@ def schedule(start_time: datetime, end_time: datetime) -> None:
     logger.info(f"Finished waiting.")
 
 
-def parse_arguments(args) -> Tuple[datetime]:
-
-    now = datetime.now()
-
-    start_time = now
-    if args.start_time:
-        splt = args.start_time.split("_")
-        if len(splt) == 1:
-            h, m = splt[0].split(":")
-            start_time = datetime.strptime(f"{now.year}.{now.month}.{now.day}_{h}:{m}", "%Y.%m.%d_%H:%M")
-        else:
-            start_time = datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M")
-
-    end_time = None
-    if args.end_time:
-        splt = args.end_time.split("_")
-        if len(splt) == 1:
-            h, m = splt[0].split(":")
-            end_time = datetime.strptime(f"{now.year}.{now.month}.{now.day}_{h}:{m}", "%Y.%m.%d_%H:%M")
-        else:
-            end_time = datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M")
-    elif args.duration:
-        duration = datetime.strptime(args.duration, "%H:%M").time()
-        end_time = start_time + timedelta(hours=duration.hour, minutes=duration.minute)
-    else:
-        duration = datetime.strptime("01:45", "%H:%M").time()
-        end_time = start_time + timedelta(hours=duration.hour, minutes=duration.minute)
-
-    return start_time, end_time
+def transform(frame: np.ndarray) -> np.ndarray:
+    frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
+    return np.expand_dims(np.transpose(frame, (2, 0, 1)), axis=0)
 
 
-def main(start_time: datetime, end_time: datetime) -> int:
+def process_buckets(boxes, labels, scores, bucket_width):
+    """ """
+    buckets = {0: 0, 1: 0, 2: 0}
+    bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
+    centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
 
-    schedule(start_time, end_time)
+    for center_x in centers_x:
+        bucket_idx = center_x // bucket_width
+        buckets[bucket_idx] += 1
 
-    camera_system = CameraSystem()
-    camera_system.start_tracking()
+    return max(buckets, key=lambda k: buckets[k])
 
-    writers = [
-        VideoWriter(path="ptz1.mp4", resolution="1920x1080", bitrate=40000),  # PTZ 1
-        VideoWriter(path="ptz2.mp4", resolution="1920x1080", bitrate=40000),  # PTZ 2
-        VideoWriter(path="pano.mp4", resolution="", bitrate=6000),  # Pano
-    ]
+
+def update_frequency(window, freq_counter, bucket, max_window_size=10):
+    """
+    Update the sliding window and frequency counter to track the most frequent bucket.
+    """
+    window.append(bucket)
+    freq_counter[bucket] += 1
+
+    if len(window) > max_window_size:
+        oldest = window.popleft()
+        freq_counter[oldest] -= 1
+        if freq_counter[oldest] == 0:
+            del freq_counter[oldest]
+
+    # Return the most common bucket
+    return freq_counter.most_common(1)[0][0]
+
+
+def main(config: Config) -> int:
+
+    schedule(config.schedule.start_time, config.schedule.end_time)
+
+    camera_system = CameraSystem(config=config.camera_system)
+    camera_system.start()
+
+    writers = {
+        'ptz1': VideoWriter(path="ptz1.mp4", resolution="1920x1080", bitrate=40000),  # PTZ 1
+        'ptz2': VideoWriter(path="ptz2.mp4", resolution="1920x1080", bitrate=40000),  # PTZ 2
+        'pano': VideoWriter(path="pano.mp4", resolution="", bitrate=6000),  # Pano
+    }
 
     try:
-        delta_time = int((end_time - start_time).total_seconds())
+        logger.debug(f"ONNX Model Device: {onnxruntime.get_device()}")
+        onnx_session = onnxruntime.InferenceSession(
+            config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+        )
+
+        window = deque()
+        freq_counter = Counter()
+
+        delta_time = int((config.schedule.end_time - config.schedule.start_time).total_seconds())
         with tqdm(total=delta_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
             for _ in range(delta_time):
                 frames = camera_system.get_frames()
-                for idx, writer in enumerate(writers):
-                    writer.write(frames[idx])
+                for writer_name, writer in writers.items():
+                    writer.write(frames[writer_name])
+
+                # Pano detection
+                labels, boxes, scores = onnx_session.run(
+                    output_names=None,
+                    input_feed={
+                        'images': transform(frames['pano']),
+                        "orig_target_sizes": config.camera_system.pano_camera.frame_size,
+                    },
+                )
+
+                most_populated_bucket = process_buckets(
+                    boxes=boxes,
+                    labels=labels,
+                    scores=scores,
+                    bucket_width=config.camera_system.pano_camera.frame_size[0] // 3,
+                )
+                mode = update_frequency(window, freq_counter, most_populated_bucket)
+                camera_system.move_to_preset(pos=CameraSystem.Position(mode))
 
                 time.sleep(1)
                 progress.update(1)
@@ -200,8 +205,12 @@ def main(start_time: datetime, end_time: datetime) -> int:
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received. Terminating processes...")
 
+    except Exception as e:
+        logger.error(e)
+        print(e)
+
     finally:
-        camera_system.stop_tracking()
+        camera_system.stop()
 
     logger.info("Finished recording.")
 
@@ -210,13 +219,16 @@ def main(start_time: datetime, end_time: datetime) -> int:
 
 if __name__ == "__main__":
     import argparse
+    import multiprocessing
+
+    multiprocessing.set_start_method("spawn")
 
     parser = argparse.ArgumentParser(prog="NDI Stream Recorder", description="Schedule a script to run based on time.")
+    parser.add_argument("--config", type=str, help="Config path.", required=False, default="./config.yaml")
 
-    parser.add_argument("--start_time", type=str, help="Start time in HH:MM format. e.g. (18:00)", required=False)
-    parser.add_argument("--end_time", type=str, help="End time in HH:MM format. e.g. (18:00)", required=False)
-    parser.add_argument("--duration", type=str, help="Duration in HH:MM format. e.g. (18:00)", required=False)
+    args = parser.parse_args()
+    cfg = load_config(args.config)
 
-    args = parse_arguments(parser.parse_args())
+    logger = setup_logger(log_dir=cfg.out_path)
 
-    main(*args)
+    main(config=cfg)

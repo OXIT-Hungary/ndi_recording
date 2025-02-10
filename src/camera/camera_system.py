@@ -1,11 +1,78 @@
 import NDIlib as ndi
-import onnxruntime
-
+import logging
 from enum import Enum
-from multiprocess import Event, Process
+import multiprocessing
 
-from ptz import PTZCamera
-from panorama import PanoramaCamera
+import time
+
+
+from src.camera.ptz import PTZConfig, PTZCamera, PTZPosition
+from src.camera.panorama import PanoramaCamera, PanoramaConfig
+
+logger = logging.getLogger(__name__)
+
+
+class CameraSystemConfig:
+    def __init__(self, config_dict) -> None:
+        self.ptz_cameras = {}
+        self.pano_camera = None
+        for cam_name, cam_config in config_dict.get("cameras", {}).items():
+            if cam_name == "pano":
+                self.pano_camera = PanoramaConfig(cam_config)
+            elif "ptz" in cam_name:
+                self.ptz_cameras[cam_name] = PTZConfig(cam_config)
+
+
+class PanoProcess(multiprocessing.Process):
+    """ """
+
+    def __init__(self, config, queue, stop_event) -> None:
+        super().__init__()
+
+        self.config = config
+        self.queue = queue
+        self.stop_event = stop_event
+
+        self.camera = None
+
+        self.sleep_time = 1 / config.fps
+
+    def run(self) -> None:
+        self.camera = PanoramaCamera(config=self.config)
+
+        while not self.stop_event.is_set():
+            frame = self.camera.get_frame()
+            if frame is not None:
+                self.queue.put(frame)
+
+            time.sleep(self.sleep_time)
+
+
+class PTZProcess(multiprocessing.Process):
+    def __init__(self, src, config, queue, stop_event) -> None:
+        super().__init__()
+
+        self.src = src
+        self.config = config
+        self.queue = queue
+        self.stop_event = stop_event
+
+        self.camera = None
+
+        self.sleep_time = 1 / config.fps
+
+    def move_to_preset(self, preset: PTZPreset, speed=0x14) -> None:
+        self.camera.move_to_preset(preset=preset, speed=speed)
+
+    def run(self) -> None:
+        self.camera = PTZCamera(src=self.src, config=self.config)
+
+        while not self.stop_event.is_set():
+            frame = self.camera.get_frame()
+            if frame is not None:
+                self.queue.put(frame)
+
+            time.sleep(self.sleep_time)
 
 
 class CameraSystem:
@@ -14,46 +81,23 @@ class CameraSystem:
         CENTER = 1
         RIGHT = 2
 
-    def __init__(self, onnx_file: str) -> None:
-        # Setup panorama camera
-        self.panorama_camera = PanoramaCamera(src="")
+    def __init__(self, config: CameraSystemConfig) -> None:
+        self.config = config
 
-        # Setup PTZ cameras
-        self.ptz_cameras = self._init_ptz_cameras()
-        for ptz_cam in self.ptz_cameras:
-            ptz_cam.move()  # TODO: Set initial coordinates
+        cams = ['pano'] if self.config.pano_camera else []
+        cams += [ptz for ptz in self.config.ptz_cameras]
+        self.frame_queues = {cam: multiprocessing.Queue(maxsize=10) for cam in cams}
 
-        self.position = CameraSystem.Position.CENTER
-
-        print(f"ONNX Model Device: {onnxruntime.get_device()}")
-        self.onnx_session = onnxruntime.InferenceSession(
-            onnx_file, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+        self.manager = multiprocessing.Manager()
+        self.stop_event = self.manager.Event()
+        self.panorama_process = PanoProcess(
+            config=self.config.pano_camera,
+            queue=self.frame_queues['pano'],
+            stop_event=self.stop_event,
         )
 
-        self.event_stop = Event()
-
-        self.panorama_process = Process(target=self._pano_process, args=(start_event))
-
-        self.ptz_processes = []
-        for ptz_camera in self.ptz_cameras:
-            p = Process(target=self._ndi_process, args=(ptz_camera))
-            self.ptz_processes.append(p)
-            p.start()
-
-        self.pano_frame = None
-        self.ptz_frames = [None] * len(self.ptz_cameras)
-
-    def start_tracking(self) -> None:
-        self.panorama_process.start()
-
-    def stop_tracking(self) -> None:
-        self.event_stop.set()
-
-        self.panorama_process.join()
-        self.panorama_process.kill()
-
-    def get_frames(self):
-        return self.pano_frame, self.ptz_frames
+        self.ptz_processes = self._init_ptz_cameras()
+        self._position = CameraSystem.Position.CENTER
 
     def _init_ptz_cameras(self):
         if not ndi.initialize():
@@ -66,92 +110,83 @@ class CameraSystem:
             return 1
 
         logger.info("Looking for sources ...")
-        ndi.find_wait_for_sources(self.ndi_find, 8000)
-        sources = ndi.find_get_current_sources(self.ndi_find)
+        sources = []
+
+        cnt_retry = 0
+        while len(sources) < 2 and cnt_retry < 10:
+            ndi.find_wait_for_sources(self.ndi_find, 8000)
+            sources = ndi.find_get_current_sources(self.ndi_find)
+        if cnt_retry == 10:
+            logger.error("Timeout searching for NDI sources.")
+            raise RuntimeError("Timeout searching for NDI sources.")
 
         cams = []
-        for idx, source in enumerate(sources):
-            cams.append(PTZCamera(src=source, idx=idx))
+        for source in sources:
+            cfg, cam_name = None, None
+            for cam_name, cfg in self.config.ptz_cameras.items():
+                if cfg.ip in source.url_address:
+                    break
+
+            cams.append(
+                PTZProcess(
+                    src=source,
+                    config=cfg,
+                    queue=self.frame_queues[cam_name],
+                    stop_event=self.stop_event,
+                )
+            )
+
+        for cam in cams:
+            cam.move_to_preset(preset=PTZPosition.CENTER, speed=0x14)
 
         return cams
 
-    def _process_buckets(self, boxes, labels, scores, bucket_width):
-        """ """
-        buckets = {0: 0, 1: 0, 2: 0}
-        bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
-        centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
+    def start(self) -> None:
+        self.panorama_process.start()
 
-        for center_x in centers_x:
-            bucket_idx = center_x // bucket_width
-            buckets[bucket_idx] += 1
+        for ptz_process in self.ptz_processes:
+            ptz_process.start()
 
-        return max(buckets, key=lambda k: buckets[k])
+    def stop(self) -> None:
+        """Stops all camera processes gracefully."""
+        self.stop_event.set()
 
-    def _update_frequency(self, window, freq_counter, bucket, max_window_size=10):
-        """
-        Update the sliding window and frequency counter to track the most frequent bucket.
-        """
-        window.append(bucket)
-        freq_counter[bucket] += 1
+        self.panorama_process.join()
 
-        if len(window) > max_window_size:
-            oldest = window.popleft()
-            freq_counter[oldest] -= 1
-            if freq_counter[oldest] == 0:
-                del freq_counter[oldest]
+        for process in self.ptz_processes:
+            process.join()
 
-        # Return the most common bucket
-        return freq_counter.most_common(1)[0][0]
+    def get_frames(self):
+        frames = {}
+        for cam_id, queue in self.frame_queues.items():
+            if not queue.empty():
+                frame = queue.get()
+                if frame is not None:
+                    frames[cam_id] = frame  # Store frame
 
-    def _pano_process(
-        self,
-        start_event: Event,
-    ):
-        """ """
-        import cv2
-        import numpy as np
-        import time
-        from collections import deque, Counter
+        return frames
 
-        def _transform(frame: np.ndarray) -> np.ndarray:
-            frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
-            return np.expand_dims(np.transpose(frame, (2, 0, 1)), axis=0)
+    def move_to_preset(self, pos: Position) -> None:
+        if self.position == pos:
+            return
 
-        sleep_time = 1 / self.panorama_camera.fps
-        bucket_width = 2304 // 3
+        if pos == CameraSystem.Position.LEFT:
+            self.ptz_processes[0].move_to_preset(PTZPosition.LEFT)
+            self.ptz_processes[1].move_to_preset(PTZPosition.RIGHT)
+        elif pos == CameraSystem.Position.CENTER:
+            for process in self.ptz_processes:
+                process.move_to_preset(PTZPosition.CENTER)
+        else:
+            self.ptz_processes[0].move_to_preset(PTZPosition.RIGHT)
+            self.ptz_processes[1].move_to_preset(PTZPosition.LEFT)
 
-        window = deque()
-        freq_counter = Counter()
+    @property
+    def position(self) -> Position:
+        return self._position
 
-        start_event.set()
-
-        while not self.event_stop.is_set():
-            frame = self.panorama_camera.get_frame()
-            if frame is not None:
-                self.pano_frame = frame.copy()
-
-                labels, boxes, scores = self.onnx_session.run(
-                    output_names=None,
-                    input_feed={
-                        'images': _transform(frame),
-                        "orig_target_sizes": self.panorama_camera.frame_size,
-                    },
-                )
-
-                most_populated_bucket = self._process_buckets(boxes, labels, scores, bucket_width)
-                mode = self._update_frequency(window, freq_counter, most_populated_bucket)
-
-                if self.position != mode:
-                    # TODO: Implement camera movement
-                    pass
-            else:
-                print("No panorama frame captured.")
-
-            time.sleep(sleep_time)
-
-    def _ndi_process(self, camera: PTZCamera) -> None:
-        while not self.event_stop.is_set():
-            self.ptz_frames[camera.idx] = camera.get_frame()
+    @position.setter
+    def position(self, new_pos: Position) -> None:
+        self._position = new_pos
 
     def __del__(self) -> None:
         for process in self.ptz_processes:

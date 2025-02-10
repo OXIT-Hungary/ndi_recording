@@ -1,0 +1,65 @@
+schedule:
+  start_time: null
+  end_time: null
+  duration: "00:01"
+
+out_path: ./output
+
+camera_system:
+  cameras:
+    ptz1:
+      name: Avonic-CM93-NDI
+      enable: True
+      ip: 169.254.108.81
+      src: ndi
+      fps: 30
+      presets:
+        left: [0xfd63, 0x0]
+        center: [0x0, 0x0]
+        right: [0x38c, 0x0]
+    ptz2:
+      name: Avonic-CM93-NDI
+      enable: True
+      ip: 169.254.108.82
+      src: ndi
+      fps: 30
+      presets:
+        left: [0x38c, 0x0]
+        center: [0x0, 0x0]
+        right: [0x351, 0x0]
+    pano:
+      name: Vivotek-MS9321-EHV-V2
+      enable: True
+      # src: rtsp://169.254.108.83:554/media2/stream.sdp?profile=Profile200
+      src: /media/geri/88438b12-8823-446e-b364-546efb5da056/datasets/wp_dataset/recorded/pano_test.mp4
+      frame_size: [2304,832]
+      crop: null
+      fps: 15
+  
+pano_onnx: ./rtdetrv2_pano.onnx
+
+video_writer:
+  ptz1:
+    name: ptz1
+    enable: True
+    resolution: [1920, 1080]
+    codec: h264_nvenc
+    ext: .mp4
+    fps: 30
+    bitrate: 40000
+  ptz2:
+    name: ptz2
+    enable: True
+    resolution: [1920, 1080]
+    codec: h264_nvenc
+    ext: .mp4
+    fps: 30
+    bitrate: 40000
+  pano:
+    name: pano
+    enable: True
+    resolution: [1920, 1080]
+    codec: h264_nvenc
+    ext: .mp4
+    fps: 15
+    bitrate: 6000
