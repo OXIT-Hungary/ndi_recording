@@ -1,19 +1,142 @@
-import logging
-import os
 import subprocess
 import time
-from collections import Counter, deque
 from typing import List
 from pathlib import Path
+import socket
+import math
 
-import cv2
 import NDIlib as ndi
-import numpy as np
+from datetime import datetime
+from tqdm import tqdm
 import onnxruntime
-from multiprocess import Event
+import cv2
+import numpy as np
+from collections import deque, Counter
+from multiprocessing import Event, Process
+import os
+
+from src.config import Config, load_config
+from src.utils.logger import setup_logger
+
+from PIL import Image, ImageDraw
+
+VISCA_PORT = 52381
+
+PAN_TIMES = [
+    136.56848526000977,
+    69.01856327056885,
+    54.386627197265625,
+    45.766037940979004,
+    37.671316385269165,
+    29.31937313079834,
+    24.364627599716187,
+    22.020536422729492,
+    20.19959259033203,
+    16.56476140022278,
+    13.843563079833984,
+    12.680556058883667,
+    11.287461519241333,
+    10.541606664657593,
+    10.029051780700684,
+    9.134373188018799,
+    8.485095500946045,
+    7.30612587928772,
+    6.574438095092773,
+    5.858522176742554,
+    4.796533584594727,
+    4.0511314868927,
+    3.6801223754882812,
+    3.3116557598114014,
+]
+
+TILT_TIMES = [
+    75.15143918991089,
+    37.944077014923096,
+    32.19101023674011,
+    24.17175054550171,
+    19.466105937957764,
+    16.21293330192566,
+    13.038465738296509,
+    10.229816198348999,
+    9.39140510559082,
+    8.00383973121643,
+    7.039175033569336,
+    6.424523830413818,
+    5.612829208374023,
+    5.345156669616699,
+    4.974465847015381,
+    4.504214286804199,
+    4.234630107879639,
+    3.8986916542053223,
+    3.5139451026916504,
+    3.215477466583252,
+]
+
+PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
+TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
+
+class2color = {1: (255, 0, 0), 2: (0, 255, 0), 3: (255, 255, 0)}
+class2str = {1: 'Goalkeeper', 2: 'Player', 3: 'Referee'}
+
+num2preset = {0: 'left', 1: 'center', 2: 'right'}
+
+
+def draw(image, labels, boxes, scores, bucket_id, bucket_width, thrh=0.5):
+    draw = ImageDraw.Draw(image)
+
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw_overlay = ImageDraw.Draw(overlay)
+
+    scr = scores
+    lab = labels[scr > thrh]
+    box = boxes[scr > thrh]
+
+    left = bucket_id * bucket_width
+    right = (bucket_id + 1) * bucket_width
+    draw_overlay.rectangle([left, 0, right, image.height], fill=(0, 128, 255, 50))
+
+    for box, label, score in zip(boxes, labels, scores):
+        if score > thrh:
+            draw.rectangle(box.tolist(), outline=class2color[label], width=2)
+            draw.text((box[0], box[1]), text=class2str[label], fill="blue")
+
+    blended = Image.alpha_composite(image.convert("RGBA"), overlay)
+    cv2.imshow("Image", np.array(blended))
+    cv2.waitKey(1)
+
+
+def schedule(start_time: datetime, end_time: datetime) -> None:
+
+    sleep_time = int((start_time - datetime.now()).total_seconds())
+    if sleep_time <= 0:
+        return
+
+    hours, remainder = divmod(sleep_time, 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    logger.info(
+        f"Waiting for {hours:02d}:{minutes:02d}:{seconds:02d} (hh:mm:ss) until {end_time.strftime('%Y.%m.%d %H:%M:%S')}."
+    )
+
+    with tqdm(total=sleep_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
+        for _ in range(int(sleep_time)):
+            time.sleep(1)
+            progress.update(1)
+
+    logger.info(f"Finished waiting.")
+
+
+def transform(frame: np.ndarray) -> np.ndarray:
+    frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
+    return np.expand_dims(np.transpose(frame, (2, 0, 1)), axis=0)
+
+
+def find_closest_key(value_dict, target_value):
+    return min(value_dict, key=lambda k: abs(value_dict[k] - target_value))
 
 
 def process_buckets(boxes, labels, scores, bucket_width):
+    """ """
     buckets = {0: 0, 1: 0, 2: 0}
     bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
     centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
@@ -42,13 +165,216 @@ def update_frequency(window, freq_counter, bucket, max_window_size=10):
     return freq_counter.most_common(1)[0][0]
 
 
+def send_inquiry(ip, command, timeout: float = 10.0):
+    """
+    Sends a VISCA inquiry command to the camera and receives the response.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(timeout)  # Timeout for response
+        try:
+            sock.sendto(command, (ip, VISCA_PORT))  # Send the VISCA command
+            response, _ = sock.recvfrom(1024)  # Receive the response
+            return response
+        except TimeoutError as e:
+            logger.error("No response from camera. Camera IP: %s", ip)
+            raise TimeoutError("[ERROR] No response from camera. Camera IP: %s", ip) from e
+        except Exception as e:
+            logger.error("Error: %s", e)
+            raise Exception(f"Error: {e}") from e
+
+
+def send_visca_command(ip, command, wait_for_response: bool = False, timeout: float = 2.0):
+    """ """
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(timeout)
+        sock.sendto(command, (ip, VISCA_PORT))
+
+        if not wait_for_response:
+            return True
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                response, _ = sock.recvfrom(1024)
+                if response == b'\x90\x41\xff':  # ACK (Command Received)
+                    pass
+                elif response == b'\x90\x51\xff':  # Completion (Command Executed)
+                    return True
+            except TimeoutError:
+                logger.debug("Timeout waiting for VISCA response.")
+                return False
+
+        logger.debug("No completion response received within timeout.")
+        return False
+
+
+def calculate_intermediate_positions(start, end, steps):
+    """
+    Generates evenly distributed intermediate positions with cubic easing.
+    Ensures smooth acceleration and deceleration.
+    """
+
+    if abs(end - start) > 3000:
+        # If the difference is too large, adjust the direction
+        if end > start:
+            start += 65536  # Move start to the next "cycle"
+        else:
+            end += 65536  # Move end to the next "cycle"
+
+    # Generate normalized steps (0 to 1)
+    t_values = np.linspace(0, 1, steps)
+    t_values = 3 * t_values**2 - 2 * t_values**3  # Cubic easing
+
+    # Compute positions
+    positions = [int(start + (end - start) * t) for t in t_values][1:]
+    positions = positions[: steps // 4] + positions[len(positions) - steps // 4 :]
+
+    return positions, start
+
+
+def get_camera_pan_tilt(ip):
+    """
+    Queries the camera for its current pan and tilt positions.
+    :param ip: Camera's IP address.
+    :return: A tuple (pan_position, tilt_position).
+    """
+
+    response = send_inquiry(ip, command=bytes.fromhex("81 09 06 12 FF"))
+
+    if len(response) >= 11 and response[1] == 0x50:  # 0x50 means successful reply
+        # Extract pan and tilt position values
+        pan_position = (response[2] << 12) | (response[3] << 8) | (response[4] << 4) | response[5]
+        tilt_position = (response[6] << 12) | (response[7] << 8) | (response[8] << 4) | response[9]
+
+        pan_position = pan_position + 65536 if pan_position < 3000 else pan_position
+        tilt_position = tilt_position + 65536 if tilt_position < 3000 else tilt_position
+
+        return pan_position, tilt_position
+    else:
+        return None
+
+
+def calculate_speeds(pan_dist, tilt_dist, idx_step, steps, max_speed=60):
+    """
+    Calculates pan and tilt speeds with synchronized movement.
+    Uses a smooth easing function to avoid jerky transitions.
+    """
+
+    total_distance = math.sqrt(pan_dist**2 + tilt_dist**2) + 1e-6  # Avoid divide-by-zero
+    pan_ratio = pan_dist / total_distance
+    tilt_ratio = tilt_dist / total_distance
+
+    # Use a smoother cubic easing function
+    if idx_step < (steps // 4):
+        t = idx_step / (steps // 4)
+        speed = max_speed * (3 * t**2 - 2 * t**3)  # Smooth acceleration
+    elif idx_step < (3 * steps // 4):
+        speed = max_speed  # Maintain top speed
+    else:
+        t = (idx_step - (3 * steps // 4)) / (steps // 4)
+        speed = max_speed - max_speed * (3 * t**2 - 2 * t**3)  # Smooth deceleration
+
+    # Apply synchronized scaling
+    pan_speed = find_closest_key(value_dict=PAN_SPEEDS, target_value=speed * pan_ratio)
+    tilt_speed = find_closest_key(value_dict=TILT_SPEEDS, target_value=speed * tilt_ratio)
+
+    return pan_speed, tilt_speed
+
+
+def wait_until_position_reached(ip, dest_pan, dest_tilt, threshold=15):
+    """
+    Waits until the camera reaches the target pan and tilt positions within a given threshold using Euclidean distance.
+
+    :param ip: Camera's IP address.
+    :param port: Camera's VISCA port.
+    :param dest_pan: Target pan position.
+    :param dest_tilt: Target tilt position.
+    :param threshold: Acceptable error margin for Euclidean distance.
+    :param timeout: Max time to wait before assuming completion.
+    """
+
+    while True:
+        time.sleep(0.05)
+        ret = get_camera_pan_tilt(ip)
+        if ret is None:
+            continue
+
+        pan, tilt = ret
+
+        distance = math.sqrt((dest_pan - pan) ** 2 + (dest_tilt - tilt) ** 2)
+
+        if distance <= threshold:
+            return pan, tilt  # Exit when within the threshold
+
+
+def power_on(ip) -> None:
+    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"))
+    if response[2] == 0x03:  # Camera off
+        send_visca_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False)
+        send_visca_command(ip=ip, command=bytes.fromhex("81 01 04 00 02 FF"), wait_for_response=True, timeout=15)
+
+
+def power_off(ip) -> None:
+    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"))
+    if response[2] == 0x02:  # Camera off
+        send_visca_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False)
+        send_visca_command(ip=ip, command=bytes.fromhex("81 01 04 00 03 FF"), wait_for_response=True, timeout=15)
+
+
+def move(ip, pan_pos, tilt_pos, speed, wait_for_response: bool = False) -> None:
+    # fmt: off
+    command = bytes(
+        [
+            0x81, 0x01, 0x06, 0x02,  # Command header
+            speed, speed,  # Speed settings
+            (pan_pos >> 12) & 0x0F, (pan_pos >> 8) & 0x0F, (pan_pos >> 4) & 0x0F, pan_pos & 0x0F,
+            (tilt_pos >> 12) & 0x0F, (tilt_pos >> 8) & 0x0F, (tilt_pos >> 4) & 0x0F, tilt_pos & 0x0F,
+            0xFF,  # Command terminator
+        ]
+    )
+    # fmt: on
+
+    send_visca_command(ip=ip, command=command, wait_for_response=wait_for_response)
+
+
+def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
+
+    start_pan, start_tilt = get_camera_pan_tilt(ip)
+    pan_positions, start_pan = calculate_intermediate_positions(start_pan, pan_pos, steps)
+    tilt_positions, start_tilt = calculate_intermediate_positions(start_tilt, tilt_pos, steps)
+
+    current_pan, current_tilt = start_pan, start_tilt
+    for idx, (next_pan, next_tilt) in enumerate(zip(pan_positions, tilt_positions)):
+        pan_speed, tilt_speed = calculate_speeds(
+            pan_dist=abs(next_pan - current_pan),
+            tilt_dist=abs(next_tilt - current_tilt),
+            idx_step=idx,
+            steps=len(pan_positions),
+            max_speed=max_speed,
+        )
+
+        # Create VISCA absolute position command (pan & tilt together)
+        # fmt: off
+        command = bytes([
+            0x81, 0x01, 0x06, 0x02,  # VISCA header
+            pan_speed, tilt_speed,  # Synced speeds
+            (next_pan >> 12) & 0x0F, (next_pan >> 8) & 0x0F, (next_pan >> 4) & 0x0F, next_pan & 0x0F,  # Pan position
+            (next_tilt >> 12) & 0x0F, (next_tilt >> 8) & 0x0F, (next_tilt >> 4) & 0x0F, next_tilt & 0x0F,  # Tilt position
+            0xFF
+        ])
+        # fmt: on
+
+        send_visca_command(ip=ip, command=command)
+        current_pan, current_tilt = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=next_tilt)
+
+
 def pano_process(
     url: str,
-    ptz_urls: List,
     onnx_file: str,
     stop_event: Event,
     start_event: Event,
-    logger: logging.Logger,
+    presets,
+    logger,
     fps: int = 15,
 ):
     """ """
@@ -60,7 +386,7 @@ def pano_process(
     bucket_width = 2200 // 3
 
     onnx_session = onnxruntime.InferenceSession(onnx_file, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-    logger.info(f"ONNX Model Device: {onnxruntime.get_device()}")
+    logger.info("ONNX Model Device: %s", onnxruntime.get_device())
 
     window = deque()
     freq_counter = Counter()
@@ -68,7 +394,7 @@ def pano_process(
     video_capture = cv2.VideoCapture(url)
 
     start_event.set()
-    logger.info(f"Process Pano - Event Set!")
+    logger.info("Process Pano - Event Set!")
     try:
         while not stop_event.is_set():
             ret, frame = video_capture.read()
@@ -89,37 +415,28 @@ def pano_process(
                 },
             )
 
-            most_populated_bucket = process_buckets(boxes, labels, scores, bucket_width)
+            most_populated_bucket = process_buckets(
+                boxes=boxes,
+                labels=labels,
+                scores=scores,
+                bucket_width=bucket_width,
+            )
             mode = update_frequency(window, freq_counter, most_populated_bucket)
 
             # draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
 
             if position != mode:
+                print(num2preset[mode])
                 position = mode
-                for url in ptz_urls:
-                    command = (
-                        rf'szCmd={{'
-                        rf'"SysCtrl":{{'
-                        rf'"PtzCtrl":{{'
-                        rf'"nChanel":0,"szPtzCmd":"preset_call","byValue":{mode}'
-                        rf'}}'
-                        rf'}}'
-                        rf'}}'
-                    )
+                move_processes = []
+                for ip, pres in presets.items():
+                    pan_pos, tilt_pos = pres[num2preset[position]]
+                    p = Process(target=move_with_easing, args=(ip, pan_pos, tilt_pos, 50, 0x14))
+                    p.start()
+                    move_processes.append(p)
 
-                    subprocess.run(
-                        [
-                            "curl",
-                            f"http://{url}/ajaxcom",
-                            "--data-raw",
-                            command,
-                        ],
-                        check=False,
-                        capture_output=False,
-                        text=False,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
+                for p in move_processes:
+                    p.join()
 
             time.sleep(sleep_time)
 
@@ -130,7 +447,15 @@ def pano_process(
 
 
 class NDIReceiver:
-    def __init__(self, src, idx: int, path, logger: logging.Logger, codec="h264_nvenc", fps: int = 30) -> None:
+    def __init__(
+        self,
+        src,
+        idx: int,
+        path,
+        logger,
+        codec: str = "h264_nvenc",
+        fps: int = 30,
+    ) -> None:
         self.idx = idx
         self.codec = codec
         self.fps = fps
@@ -211,9 +536,8 @@ class NDIReceiver:
         self.ffmpeg_process.wait()
 
 
-def ndi_receiver_process(
-    src, idx: int, path, logger: logging.Logger, stop_event: Event, codec: str = "h264_nvenc", fps: int = 30
-):
+def ndi_receiver_process(src, idx: int, path, stop_event: Event, logger, codec: str = "h264_nvenc", fps: int = 30):
+
     path = os.path.join(path, f"{Path(path).stem}_cam{idx}.mp4")
     receiver = NDIReceiver(src, idx, path, logger, codec, fps)
 
@@ -240,18 +564,94 @@ def ndi_receiver_process(
     logger.info(f"NDI Receiver Process {receiver.idx} stopped.")
 
 
-if __name__ == "__main__":
-    from multiprocess import Event, Process
-    from datetime import datetime
+def start_cam(ip, preset) -> None:
+    power_on(ip)
+    move(ip=ip, pan_pos=preset[0], tilt_pos=preset[1], speed=0x14)
 
-    from app.core.utils.dir_creator import get_recording_dir_from_datetime
-    from app.core.utils.logger import get_recording_logger
 
-    start_time = datetime.now()
+def main(config: Config) -> int:
 
-    recording_dir = get_recording_dir_from_datetime(start_time)
-    logger = get_recording_logger(start_time)
+    logger = setup_logger(log_dir=config.out_path)
+    schedule(config.schedule.start_time, config.schedule.end_time)
 
+    processes = []
+    for cfg in config.camera_system.ptz_cameras.values():
+        p = Process(target=start_cam, args=(cfg.ip, cfg.presets['center']))
+        p.start()
+        processes.append(p)
+
+    for proc in processes:
+        proc.join()
+
+    if not ndi.initialize():
+        logger.error("Failed to initialize NDI.")
+        return 1
+
+    ndi_find = ndi.find_create_v2()
+    if ndi_find is None:
+        logger.error("Failed to create NDI find instance.")
+        return 1
+
+    sources = []
+    while len(sources) < 2:
+        logger.info("Looking for sources ...")
+        ndi.find_wait_for_sources(ndi_find, 5000)
+        sources = ndi.find_get_current_sources(ndi_find)
+
+    presets = {cfg.ip: cfg.presets for cfg in config.camera_system.ptz_cameras.values()}
+
+    start_event = Event()
     stop_event = Event()
 
-    ndi_receiver_process("", 0, recording_dir, logger, stop_event)
+    proc_pano = Process(
+        target=pano_process,
+        args=(config.camera_system.pano_camera.src, config.pano_onnx, stop_event, start_event, presets, logger),
+    )
+    proc_pano.start()
+
+    start_event.wait()
+    processes = []
+    for idx, source in enumerate(sources):
+        p = Process(target=ndi_receiver_process, args=(source, idx, config.out_path, stop_event, logger))
+        processes.append(p)
+        p.start()
+
+    ndi.find_destroy(ndi_find)
+
+    try:
+        delta_time = int((config.schedule.end_time - config.schedule.start_time).total_seconds())
+        with tqdm(total=delta_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
+            for _ in range(delta_time):
+                time.sleep(1)
+                progress.update(1)
+
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received. Terminating processes...")
+
+    finally:
+        stop_event.set()
+        for process in processes:
+            if process.is_alive():
+                process.join()
+
+        proc_pano.kill()
+
+    logger.info("Finished recording.")
+    for cfg in config.camera_system.ptz_cameras.values():
+        power_off(cfg.ip)
+
+    return 0
+
+
+if __name__ == "__main__":
+    import argparse
+
+    # multiprocessing.set_start_method("spawn")
+
+    parser = argparse.ArgumentParser(prog="NDI Stream Recorder", description="Schedule a script to run based on time.")
+    parser.add_argument("--config", type=str, help="Config path.", required=False, default="./config.yaml")
+
+    args = parser.parse_args()
+    cfg = load_config(args.config)
+
+    main(config=cfg)

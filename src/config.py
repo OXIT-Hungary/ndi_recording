@@ -1,0 +1,98 @@
+import os
+import yaml
+from datetime import datetime, timedelta
+
+
+class ScheduleConfig:
+    def __init__(self, config_dict):
+        self.start_time = config_dict.get("start_time")
+        self.end_time = config_dict.get("end_time")
+        self.duration = config_dict.get("duration")
+
+        self.calculate()
+
+    def calculate(self) -> None:
+        now = datetime.now()
+
+        if self.start_time:
+            splt = self.start_time.split("_")
+            if len(splt) == 1:
+                h, m = splt[0].split(":")
+                self.start_time = datetime.strptime(f"{now.year}.{now.month}.{now.day}_{h}:{m}", "%Y.%m.%d_%H:%M")
+            else:
+                self.start_time = datetime.strptime(self.start_time, "%Y.%m.%d_%H:%M")
+        else:
+            self.start_time = now
+
+        if self.end_time:
+            splt = self.end_time.split("_")
+            if len(splt) == 1:
+                h, m = splt[0].split(":")
+                self.end_time = datetime.strptime(f"{now.year}.{now.month}.{now.day}_{h}:{m}", "%Y.%m.%d_%H:%M")
+            else:
+                self.end_time = datetime.strptime(self.end_time, "%Y.%m.%d_%H:%M")
+
+        elif self.duration:
+            self.duration = datetime.strptime(self.duration, "%H:%M").time()
+            self.end_time = self.start_time + timedelta(hours=self.duration.hour, minutes=self.duration.minute)
+
+        else:
+            self.duration = datetime.strptime("01:45", "%H:%M").time()
+            self.end_time = self.start_time + timedelta(hours=self.duration.hour, minutes=self.duration.minute)
+
+
+class PTZConfig:
+    def __init__(self, ptz_dict):
+        self.name = ptz_dict.get("name", None)
+        self.enable = ptz_dict.get("enable", False)
+        self.ip = ptz_dict.get("ip", None)
+        self.resolution = ptz_dict.get("resolution", [1920, 1080])
+        self.codec = ptz_dict.get("codec", "h264_nvenc")
+        self.ext = ptz_dict.get("ext", ".mp4")
+        self.fps = ptz_dict.get("fps", 30)
+        self.bitrate = ptz_dict.get("bitrate", 40000)
+        self.presets = ptz_dict.get("presets", None)
+
+
+class PanoramaConfig:
+    def __init__(self, pano_dict):
+        self.enable = pano_dict.get("enable", False)
+        self.src = pano_dict.get("src")
+        self.frame_size = pano_dict.get("frame_size", [2304, 832])
+        self.crop = pano_dict.get("crop", None)
+        self.fps = pano_dict.get("fps", 15)
+
+
+class CameraSystemConfig:
+    def __init__(self, config_dict) -> None:
+        self.ptz_cameras = {}
+        self.pano_camera = None
+        for cam_name, cam_config in config_dict.get("cameras", {}).items():
+            if cam_name == "pano":
+                self.pano_camera = PanoramaConfig(cam_config)
+            elif "ptz" in cam_name:
+                self.ptz_cameras[cam_name] = PTZConfig(cam_config)
+
+
+class Config:
+    def __init__(self, config_dict):
+        self.schedule = ScheduleConfig(config_dict=config_dict.get("schedule", {}))
+        self.camera_system = CameraSystemConfig(config_dict=config_dict.get("camera_system", {}))
+        self.pano_onnx = config_dict.get("pano_onnx", None)
+        self.video_writer = config_dict.get("video_writer", {})
+
+        self.out_path = f"{config_dict.get('out_path', './output')}/{datetime.now().strftime('%Y%m%d_%H%M')}"
+        os.makedirs(self.out_path, exist_ok=True)
+
+
+def load_config(file_path: str):
+    """Loads YAML file and returns a Config object."""
+    try:
+        with open(file_path, 'r') as file:
+            return Config(yaml.safe_load(file) or {})
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found.")
+        return Config({})
+    except yaml.YAMLError as e:
+        print(f"Error parsing YAML file: {e}")
+        return Config({})
