@@ -1,8 +1,8 @@
-import time
-import socket
 import math
-import numpy as np
+import socket
+import time
 
+import numpy as np
 
 PAN_TIMES = [
     136.56848526000977,

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from threading import Event, Thread, Lock
+from threading import Event, Lock, Thread
 
 from typing_extensions import Self
 
@@ -76,18 +76,15 @@ class ScheduledTask:
 
             now = datetime.now(timezone.utc)
             return (
-                    self.schedule.start_time <= now <= self.schedule.end_time
-                    and not self.is_running()
-                    and not self._force_stopped
+                self.schedule.start_time <= now <= self.schedule.end_time
+                and not self.is_running()
+                and not self._force_stopped
             )
 
     def is_due_to_stop(self) -> bool:
         with self._lock:
             now = datetime.now(timezone.utc)
-            return (
-                    (self.schedule.end_time <= now or self._force_stopped)
-                    and self.is_running()
-            )
+            return (self.schedule.end_time <= now or self._force_stopped) and self.is_running()
 
 
 class Scheduler:
