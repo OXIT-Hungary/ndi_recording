@@ -2,7 +2,6 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,visualstudiocode,virtualenv
 
 output/
-rtdetrv2.onnx
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
