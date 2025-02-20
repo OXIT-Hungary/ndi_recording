@@ -17,6 +17,7 @@ camera_system:
         left: [0xfd63, 0x0]
         center: [0x0, 0x0]
         right: [0x38c, 0x0]
+      speed: 0x10
     ptz2:
       name: Avonic-CM93-NDI
       enable: True
@@ -27,13 +28,16 @@ camera_system:
         left: [0x38c, 0x0]
         center: [0x0, 0x0]
         right: [0x351, 0x0]
+      speed: 0x10
     pano:
       name: Vivotek-MS9321-EHV-V2
       enable: True
+      ip: 169.254.108.83
+      # src: rtsp
       # src: rtsp://169.254.108.83:554/media2/stream.sdp?profile=Profile200
       src: /home/geri/Desktop/pano_cut.mp4
-      frame_size: [2304,832]
-      crop: null
+      frame_size: [4416, 1600]
+      crop: [420, 1150, 1190, 3390] # (top_y, top_x, bottom_y, bottom_x)
       fps: 15
   
-pano_onnx: /home/geri/work/tools/rtdetrv2.onnx
+pano_onnx: ./rtdetrv2.onnx

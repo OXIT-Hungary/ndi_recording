@@ -2,7 +2,6 @@ import subprocess
 import time
 from typing import List
 from pathlib import Path
-import socket
 import math
 
 import NDIlib as ndi
@@ -15,12 +14,12 @@ from collections import deque, Counter
 from multiprocessing import Event, Process
 import os
 
-from src.config import Config, load_config
+import src.visca as visca
+from src.config import Config, load_config, PanoramaConfig
 from src.utils.logger import setup_logger
 
 from PIL import Image, ImageDraw
 
-VISCA_PORT = 52381
 
 PAN_TIMES = [
     136.56848526000977,
@@ -165,49 +164,6 @@ def update_frequency(window, freq_counter, bucket, max_window_size=10):
     return freq_counter.most_common(1)[0][0]
 
 
-def send_inquiry(ip, command, timeout: float = 10.0):
-    """
-    Sends a VISCA inquiry command to the camera and receives the response.
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.settimeout(timeout)  # Timeout for response
-        try:
-            sock.sendto(command, (ip, VISCA_PORT))  # Send the VISCA command
-            response, _ = sock.recvfrom(1024)  # Receive the response
-            return response
-        except TimeoutError as e:
-            logger.error("No response from camera. Camera IP: %s", ip)
-            raise TimeoutError("[ERROR] No response from camera. Camera IP: %s", ip) from e
-        except Exception as e:
-            logger.error("Error: %s", e)
-            raise Exception(f"Error: {e}") from e
-
-
-def send_visca_command(ip, command, wait_for_response: bool = False, timeout: float = 2.0):
-    """ """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.settimeout(timeout)
-        sock.sendto(command, (ip, VISCA_PORT))
-
-        if not wait_for_response:
-            return True
-
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                response, _ = sock.recvfrom(1024)
-                if response == b'\x90\x41\xff':  # ACK (Command Received)
-                    pass
-                elif response == b'\x90\x51\xff':  # Completion (Command Executed)
-                    return True
-            except TimeoutError:
-                logger.debug("Timeout waiting for VISCA response.")
-                return False
-
-        logger.debug("No completion response received within timeout.")
-        return False
-
-
 def calculate_intermediate_positions(start, end, steps):
     """
     Generates evenly distributed intermediate positions with cubic easing.
@@ -230,28 +186,6 @@ def calculate_intermediate_positions(start, end, steps):
     positions = positions[: steps // 4] + positions[len(positions) - steps // 4 :]
 
     return positions, start
-
-
-def get_camera_pan_tilt(ip):
-    """
-    Queries the camera for its current pan and tilt positions.
-    :param ip: Camera's IP address.
-    :return: A tuple (pan_position, tilt_position).
-    """
-
-    response = send_inquiry(ip, command=bytes.fromhex("81 09 06 12 FF"))
-
-    if len(response) >= 11 and response[1] == 0x50:  # 0x50 means successful reply
-        # Extract pan and tilt position values
-        pan_position = (response[2] << 12) | (response[3] << 8) | (response[4] << 4) | response[5]
-        tilt_position = (response[6] << 12) | (response[7] << 8) | (response[8] << 4) | response[9]
-
-        pan_position = pan_position + 65536 if pan_position < 3000 else pan_position
-        tilt_position = tilt_position + 65536 if tilt_position < 3000 else tilt_position
-
-        return pan_position, tilt_position
-    else:
-        return None
 
 
 def calculate_speeds(pan_dist, tilt_dist, idx_step, steps, max_speed=60):
@@ -295,7 +229,7 @@ def wait_until_position_reached(ip, dest_pan, dest_tilt, threshold=15):
 
     while True:
         time.sleep(0.05)
-        ret = get_camera_pan_tilt(ip)
+        ret = visca.get_camera_pan_tilt(ip)
         if ret is None:
             continue
 
@@ -305,20 +239,6 @@ def wait_until_position_reached(ip, dest_pan, dest_tilt, threshold=15):
 
         if distance <= threshold:
             return pan, tilt  # Exit when within the threshold
-
-
-def power_on(ip) -> None:
-    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"))
-    if response[2] == 0x03:  # Camera off
-        send_visca_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False)
-        send_visca_command(ip=ip, command=bytes.fromhex("81 01 04 00 02 FF"), wait_for_response=True, timeout=15)
-
-
-def power_off(ip) -> None:
-    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"))
-    if response[2] == 0x02:  # Camera off
-        send_visca_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False)
-        send_visca_command(ip=ip, command=bytes.fromhex("81 01 04 00 03 FF"), wait_for_response=True, timeout=15)
 
 
 def move(ip, pan_pos, tilt_pos, speed, wait_for_response: bool = False) -> None:
@@ -334,12 +254,12 @@ def move(ip, pan_pos, tilt_pos, speed, wait_for_response: bool = False) -> None:
     )
     # fmt: on
 
-    send_visca_command(ip=ip, command=command, wait_for_response=wait_for_response)
+    visca.send_command(ip=ip, command=command, wait_for_response=wait_for_response)
 
 
 def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
 
-    start_pan, start_tilt = get_camera_pan_tilt(ip)
+    start_pan, start_tilt = visca.get_camera_pan_tilt(ip)
     pan_positions, start_pan = calculate_intermediate_positions(start_pan, pan_pos, steps)
     tilt_positions, start_tilt = calculate_intermediate_positions(start_tilt, tilt_pos, steps)
 
@@ -364,26 +284,24 @@ def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
         ])
         # fmt: on
 
-        send_visca_command(ip=ip, command=command)
+        visca.send_command(ip=ip, command=command)
         current_pan, current_tilt = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=next_tilt)
 
 
 def pano_process(
-    url: str,
+    config: PanoramaConfig,
     onnx_file: str,
     stop_event: Event,
     start_event: Event,
-    presets,
+    ptz_presets,
     logger,
-    fps: int = 15,
 ):
     """ """
 
     position = 1
 
-    frame_size = np.array([[2200, 730]])
-    sleep_time = 1 / fps
-    bucket_width = 2200 // 3
+    sleep_time = 1 / config.fps
+    bucket_width = config.frame_size[0] // 3
 
     onnx_session = onnxruntime.InferenceSession(onnx_file, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
     logger.info("ONNX Model Device: %s", onnxruntime.get_device())
@@ -391,27 +309,28 @@ def pano_process(
     window = deque()
     freq_counter = Counter()
 
-    video_capture = cv2.VideoCapture(url)
+    video_capture = cv2.VideoCapture(config.src)
 
     start_event.set()
     logger.info("Process Pano - Event Set!")
     try:
         while not stop_event.is_set():
+            start_time = time.time()
+
             ret, frame = video_capture.read()
 
             if not ret:
                 logger.warning(f"No panorama frame captured.")
                 raise KeyboardInterrupt()
 
-            frame = frame[420:1150, 1190:3390]
-            img = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
-            img = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0)
+            if config.crop:
+                frame = frame[config.crop[0] : config.crop[1], config.crop[2] : config.crop[3]]
 
             labels, boxes, scores = onnx_session.run(
                 output_names=None,
                 input_feed={
-                    'images': img,
-                    "orig_target_sizes": frame_size,
+                    'images': transform(frame),
+                    "orig_target_sizes": np.array([config.frame_size]),
                 },
             )
 
@@ -423,27 +342,27 @@ def pano_process(
             )
             mode = update_frequency(window, freq_counter, most_populated_bucket)
 
-            # draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
+            draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
 
             if position != mode:
                 print(num2preset[mode])
                 position = mode
                 move_processes = []
-                for ip, pres in presets.items():
-                    pan_pos, tilt_pos = pres[num2preset[position]]
-                    p = Process(target=move_with_easing, args=(ip, pan_pos, tilt_pos, 50, 0x14))
+                for ip, preset in ptz_presets.items():
+                    pan_pos, tilt_pos = preset['presets'][num2preset[position]]
+                    p = Process(target=move_with_easing, args=(ip, pan_pos, tilt_pos, 50, preset['speed']))
                     p.start()
                     move_processes.append(p)
 
                 for p in move_processes:
                     p.join()
 
-            time.sleep(sleep_time)
+            time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
     except KeyboardInterrupt:
         video_capture.release()
 
-    logger.info(f"RTSP Receiver Process stopped.")
+    logger.info(f"Pano Process stopped.")
 
 
 class NDIReceiver:
@@ -565,13 +484,12 @@ def ndi_receiver_process(src, idx: int, path, stop_event: Event, logger, codec: 
 
 
 def start_cam(ip, preset) -> None:
-    power_on(ip)
+    visca.power_on(ip)
     move(ip=ip, pan_pos=preset[0], tilt_pos=preset[1], speed=0x14)
 
 
 def main(config: Config) -> int:
 
-    logger = setup_logger(log_dir=config.out_path)
     schedule(config.schedule.start_time, config.schedule.end_time)
 
     processes = []
@@ -598,14 +516,16 @@ def main(config: Config) -> int:
         ndi.find_wait_for_sources(ndi_find, 5000)
         sources = ndi.find_get_current_sources(ndi_find)
 
-    presets = {cfg.ip: cfg.presets for cfg in config.camera_system.ptz_cameras.values()}
+    presets = {
+        cfg.ip: {'presets': cfg.presets, 'speed': cfg.speed} for cfg in config.camera_system.ptz_cameras.values()
+    }
 
     start_event = Event()
     stop_event = Event()
 
     proc_pano = Process(
         target=pano_process,
-        args=(config.camera_system.pano_camera.src, config.pano_onnx, stop_event, start_event, presets, logger),
+        args=(config.camera_system.pano_camera, config.pano_onnx, stop_event, start_event, presets, logger),
     )
     proc_pano.start()
 
@@ -638,7 +558,7 @@ def main(config: Config) -> int:
 
     logger.info("Finished recording.")
     for cfg in config.camera_system.ptz_cameras.values():
-        power_off(cfg.ip)
+        visca.power_off(cfg.ip)
 
     return 0
 
@@ -653,5 +573,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     cfg = load_config(args.config)
+    logger = setup_logger(log_dir=cfg.out_path)
 
     main(config=cfg)

@@ -42,25 +42,26 @@ class ScheduleConfig:
 
 
 class PTZConfig:
-    def __init__(self, ptz_dict):
-        self.name = ptz_dict.get("name", None)
-        self.enable = ptz_dict.get("enable", False)
-        self.ip = ptz_dict.get("ip", None)
-        self.resolution = ptz_dict.get("resolution", [1920, 1080])
-        self.codec = ptz_dict.get("codec", "h264_nvenc")
-        self.ext = ptz_dict.get("ext", ".mp4")
-        self.fps = ptz_dict.get("fps", 30)
-        self.bitrate = ptz_dict.get("bitrate", 40000)
-        self.presets = ptz_dict.get("presets", None)
+    def __init__(self, config_dict):
+        self.name = config_dict.get("name", None)
+        self.enable = config_dict.get("enable", False)
+        self.ip = config_dict.get("ip", None)
+        self.resolution = config_dict.get("resolution", [1920, 1080])
+        self.codec = config_dict.get("codec", "h264_nvenc")
+        self.ext = config_dict.get("ext", ".mp4")
+        self.fps = config_dict.get("fps", 30)
+        self.bitrate = config_dict.get("bitrate", 40000)
+        self.presets = config_dict.get("presets", None)
+        self.speed = config_dict.get("speed", 0x10)
 
 
 class PanoramaConfig:
-    def __init__(self, pano_dict):
-        self.enable = pano_dict.get("enable", False)
-        self.src = pano_dict.get("src")
-        self.frame_size = pano_dict.get("frame_size", [2304, 832])
-        self.crop = pano_dict.get("crop", None)
-        self.fps = pano_dict.get("fps", 15)
+    def __init__(self, config_dict):
+        self.enable = config_dict.get("enable", False)
+        self.src = config_dict.get("src")
+        self.frame_size = config_dict.get("frame_size", [2304, 832])
+        self.crop = config_dict.get("crop", None)
+        self.fps = config_dict.get("fps", 15)
 
 
 class CameraSystemConfig:

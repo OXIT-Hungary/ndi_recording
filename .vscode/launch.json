@@ -10,12 +10,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "args": [
-                // "--start_time",
-                // "2024.11.21_10:35",
-                // "--end_time",
-                // "11:00",
-                "--duration",
-                "01:45"
+                "--config=./config.yaml"
             ],
             "console": "integratedTerminal"
         }
