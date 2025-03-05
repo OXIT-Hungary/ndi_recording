@@ -7,3 +7,4 @@ pillow
 fastapi
 uvicorn
 multiprocess
+pyyaml
