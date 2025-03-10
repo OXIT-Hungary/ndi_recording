@@ -291,9 +291,45 @@ def pano_process(
     stop_event: Event,
     start_event: Event,
     ptz_presets,
+    path,
     logger,
 ):
     """ """
+
+    ffmpeg_process = subprocess.Popen(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "bgr24",
+            "-s",
+            f"{config.crop[3] - config.crop[1]}x{config.crop[2] - config.crop[0]}",
+            "-r",
+            str(15),
+            "-hwaccel",
+            "cuda",
+            "-hwaccel_output_format",
+            "cuda",
+            "-i",
+            "pipe:",
+            "-c:v",
+            "h264_nvenc",
+            "-pix_fmt",
+            "yuv420p",
+            "-b:v",
+            "20000k",
+            "-preset",
+            "fast",
+            "-profile:v",
+            "high",
+            str(os.path.join(path, f"{Path(path).stem}_pano.mp4")),
+        ],
+        stdin=subprocess.PIPE,
+    )
 
     position = 1
 
@@ -321,7 +357,10 @@ def pano_process(
                 raise KeyboardInterrupt()
 
             if config.crop:
-                frame = frame[config.crop[0] : config.crop[1], config.crop[2] : config.crop[3]]
+                frame = frame[config.crop[0] : config.crop[2], config.crop[1] : config.crop[3]]
+
+            ffmpeg_process.stdin.write(frame.tobytes())
+            ffmpeg_process.stdin.flush()
 
             labels, boxes, scores = onnx_session.run(
                 output_names=None,
@@ -339,10 +378,9 @@ def pano_process(
             )
             mode = update_frequency(window, freq_counter, most_populated_bucket)
 
-            draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
+            # draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
 
             if position != mode:
-                print(num2preset[mode])
                 position = mode
                 move_processes = []
                 for ip, preset in ptz_presets.items():
@@ -357,9 +395,15 @@ def pano_process(
             time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
     except KeyboardInterrupt:
+        logger.info("Keyboard Interrupt received.")
+
+    finally:
         video_capture.release()
 
-    logger.info(f"Pano Process stopped.")
+        ffmpeg_process.stdin.flush()
+        ffmpeg_process.stdin.close()
+
+    logger.info("Pano Process stopped.")
 
 
 class NDIReceiver:
@@ -397,11 +441,8 @@ class NDIReceiver:
         t, v, _, _ = ndi.recv_capture_v3(self.receiver, 1000)
         frame = None
         if t == ndi.FRAME_TYPE_VIDEO:
-            # logger.info("Frame received")
             frame = np.copy(v.data[:, :, :3])
             ndi.recv_free_video_v2(self.receiver, v)
-            # cv2.imwrite('output/asd.png', frame)
-            # print(frame.shape)
 
         return frame, t
 
@@ -462,7 +503,7 @@ def ndi_receiver_process(src, idx: int, path, stop_event: Event, logger, codec: 
     try:
         while not stop_event.is_set():
             frame, t = receiver.get_frame()
-            if frame is not None:
+            if frame is not None and t == ndi.FrameType.FRAME_TYPE_VIDEO:
                 try:
                     receiver.ffmpeg_process.stdin.write(frame.tobytes())
                     receiver.ffmpeg_process.stdin.flush()
@@ -472,6 +513,8 @@ def ndi_receiver_process(src, idx: int, path, stop_event: Event, logger, codec: 
                 except Exception as e:
                     logger.error(f"Error in NDI Receiver Process {idx}: {e}")
                     break
+            elif t == ndi.FrameType.FRAME_TYPE_AUDIO:
+                pass
             else:
                 logger.warning(f"No video frame captured. Frame type: {t}")
     except KeyboardInterrupt:
@@ -486,8 +529,6 @@ def start_cam(ip, preset) -> None:
 
 
 def main(config: Config) -> int:
-
-    schedule(config.schedule.start_time, config.schedule.end_time)
 
     processes = []
     for cfg in config.camera_system.ptz_cameras.values():
@@ -522,7 +563,15 @@ def main(config: Config) -> int:
 
     proc_pano = Process(
         target=pano_process,
-        args=(config.camera_system.pano_camera, config.pano_onnx, stop_event, start_event, presets, logger),
+        args=(
+            config.camera_system.pano_camera,
+            config.pano_onnx,
+            stop_event,
+            start_event,
+            presets,
+            config.out_path,
+            logger,
+        ),
     )
     proc_pano.start()
 
@@ -585,5 +634,7 @@ if __name__ == "__main__":
     )
 
     logger = setup_logger(log_dir=cfg.out_path)
+
+    schedule(cfg.schedule.start_time, cfg.schedule.end_time)
 
     main(config=cfg)
