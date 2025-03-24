@@ -1,0 +1,131 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
+import cv2
+import numpy.typing as npt
+import os
+import onnxruntime
+import math
+import scipy.interpolate
+
+class Utils:
+    
+    def __init__(self):
+        self.world_points = np.array([
+            [-10, 10],
+            [10, 10],
+            [-10, -10],
+            [10, -10]
+        ], dtype=np.float32)
+
+        self.img_pts = np.array([
+            [937, 182],
+            [1968, 166],
+            [564, 631],
+            [2322, 578]
+        ], dtype=np.float32)
+    
+    def project_centroids_to_court(self, bboxes, labels, scores, H):
+        """
+        Project centroids onto the court.
+        :param bboxes: bounding box centroids. represented as [x, y, width, height]
+        :param H: Homography matrix. From camera image coordinate systesm to BEV space
+        """
+        projected_players_list = np.empty((1, 2), float)
+        bboxes_player = bboxes[(labels == 2) & (scores > 0.5)]
+
+        if len(bboxes_player) == 0:
+            return None  # No players, default to middle band
+
+        for bbox in bboxes:
+            player_centroid = np.array([(bbox[0] + bbox[2])/2,bbox[3], 1]).reshape(3,1) 
+            projected_centroids = np.matmul(H, player_centroid)
+            projected_centroids_normalized = projected_centroids / projected_centroids[2]
+            projected_players_list = np.append(projected_players_list, projected_centroids_normalized[0:2].T, axis=0)
+        #print(projected_centroids_normalized)
+
+        projected_players_list = np.delete(projected_players_list, 0, 0)
+        return projected_players_list
+
+    def get_four_points(self, fig, ax):
+        points = []
+
+        def onclick(event):
+            if event.xdata is not None and event.ydata is not None:
+                points.append((event.xdata, event.ydata))
+                ax.plot(event.xdata, event.ydata, 'go', markersize=5)
+                fig.canvas.draw()
+                if len(points) >= 4:
+                    plt.close()
+
+        fig.canvas.mpl_connect('button_press_event', onclick)
+        plt.show()
+        
+        return points
+        
+    def calculate_homography(self):
+
+        img_pts = np.array(self.img_pts)
+        world_pts = np.array(self.world_points)
+
+        homography, _ = cv2.findHomography(img_pts, world_pts, method = 0)
+
+        return homography
+
+    def calculate_reprojection_error(self, homography):
+
+        img_pts = np.array(self.img_pts, dtype=np.float32)
+        world_pts = np.array(self.world_points, dtype=np.float32)
+
+        #r = np.array([1483,321]).reshape(1,2)
+        #img_pts = np.vstack([img_pts, r])
+        projected_pts = cv2.perspectiveTransform(img_pts.reshape(-1, 1, 2), homography)
+        projected_pts = projected_pts.squeeze()
+
+        error = np.sqrt(np.sum((projected_pts - world_pts) ** 2, axis=1)).mean()
+
+        return error
+
+    def save_homography(self, homography, img_name, path):
+        split = img_name.split(".")
+        name_without_sfx = split[0]
+        homography_filename = f"{name_without_sfx}_homography.npy"
+        h_path = os.path.join(path, homography_filename)
+        np.save(h_path, homography)
+
+        print(f"Homography saved to {homography_filename}")
+
+    def onnx__inference(
+        self,
+        H: npt.ArrayLike = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
+        frame_size: npt.ArrayLike = (2810, 730),
+        img: np.ndarray = None,
+        onnx_session: onnxruntime.InferenceSession = None,
+    ) -> npt.ArrayLike:
+        frame_size = np.array([[2810,  730]])
+
+        labels, boxes, scores = onnx_session.run(
+            output_names=None,
+            input_feed={
+                'images': img,
+                "orig_target_sizes": frame_size,
+            },
+        )
+
+        projected_players = self.project_centroids_to_court(boxes, labels, scores, H)
+
+        return projected_players
+    
+    def lerp(self, t, times, points):
+        dx = points[1][0] - points[0][0]
+        dy = points[1][1] - points[0][1]
+        dt = (t-times[0]) / (times[1]-times[0])
+        return dt*dx + points[0][0], dt*dy + points[0][1]
+    
+    def move_centroid_smoothly(self, current_pos, new_pos):
+        
+        current_pos = self.lerp(10, [1,100], [current_pos,new_pos])
+        
+        return current_pos

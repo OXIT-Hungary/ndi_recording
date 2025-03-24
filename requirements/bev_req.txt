@@ -1,0 +1,10 @@
+numpy
+scipy
+open3d
+matplotlib
+opencv-python
+onnx
+onnxruntime
+onnxruntime-gpu
+imageio
+filterpy

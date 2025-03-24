@@ -18,6 +18,8 @@ import src.visca as visca
 from src.config import Config, PanoramaConfig, load_config
 from src.utils.logger import setup_logger
 
+from bev_main import BEV
+
 PAN_TIMES = [
     136.56848526000977,
     69.01856327056885,
@@ -619,9 +621,21 @@ if __name__ == "__main__":
     parser.add_argument("--start_time", type=str, required=False, default=None)
     parser.add_argument("--end_time", type=str, required=False, default=None)
     parser.add_argument("--duration", type=str, required=False, default=None)
+    
+    # BEV arguments
+    parser.add_argument('--court-width', type=float, default=25.0, help='Width of the court in meters (default: 30)')
+    parser.add_argument('--court-height', type=float, default=20.0, help='Height of the court in meters (default: 20)')
+    parser.add_argument('--no-boundary', action='store_false', dest='draw_boundary', help='Disable court boundary')
+    parser.add_argument('--no-half-line', action='store_false', dest='draw_half_line', help='Disable half-distance line')
+    parser.add_argument('--no-2m', action='store_false', dest='draw_2m_line', help='Disable 2-meter lines')
+    parser.add_argument('--no-5m', action='store_false', dest='draw_5m_line', help='Disable 5-meter lines')
+    parser.add_argument('--no-6m', action='store_false', dest='draw_6m_line', help='Disable 6-meter lines')
 
     args = parser.parse_args()
     cfg = load_config(file_path=args.config)
+    
+    bev = BEV(args)
+    
 
     cfg.schedule.start_time = (
         datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M") if args.start_time else cfg.schedule.start_time
