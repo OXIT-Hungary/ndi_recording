@@ -1,7 +1,10 @@
 # Compile production and development dependencies
-compile-requirements:
+compile-requirements: ensure-pip-tools
 	pip-compile --upgrade requirements/dev.in -o requirements/dev.txt
 	pip-compile --upgrade requirements/prod.in -o requirements/prod.txt
+
+ensure-pip-tools:
+	pip install pip-tools
 
 # Install dependencies
 install-prod:

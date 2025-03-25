@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Stream Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .container {
+            max-width: 800px;
+            margin-top: 50px;
+        }
+        .auth-status {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .authenticated {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .not-authenticated {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">YouTube Stream Manager</h1>
+
+        <div class="auth-status {% if is_authenticated %}authenticated{% else %}not-authenticated{% endif %}">
+            <h4>Authentication Status: {% if is_authenticated %}Authenticated{% else %}Not Authenticated{% endif %}</h4>
+            {% if not is_authenticated %}
+                <p>You need to authenticate with YouTube to use this application.</p>
+                <a href="/v1/youtube/auth" class="btn btn-primary">Authenticate with YouTube</a>
+            {% else %}
+                <p>You are authenticated and can use all features.</p>
+                <a href="/v1/youtube/streams" class="btn btn-success">View Scheduled Streams</a>
+            {% endif %}
+        </div>
+
+        {% if error_message %}
+        <div class="alert alert-danger" role="alert">
+            {{ error_message }}
+        </div>
+        {% endif %}
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h4>YouTube Stream Manager Features</h4>
+            </div>
+            <div class="card-body">
+                <ul>
+                    <li>Schedule YouTube streams</li>
+                    <li>View all scheduled streams</li>
+                    <li>Delete scheduled streams</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
