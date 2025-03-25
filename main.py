@@ -530,7 +530,9 @@ def start_cam(ip, preset) -> None:
     move(ip=ip, pan_pos=preset[0], tilt_pos=preset[1], speed=0x14)
 
 
-def main(config: Config) -> int:
+def main(args, config: Config) -> int:
+    
+    bev = BEV(args)
 
     processes = []
     for cfg in config.camera_system.ptz_cameras.values():
@@ -633,9 +635,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     cfg = load_config(file_path=args.config)
-    
-    bev = BEV(args)
-    
 
     cfg.schedule.start_time = (
         datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M") if args.start_time else cfg.schedule.start_time
@@ -651,4 +650,4 @@ if __name__ == "__main__":
 
     schedule(cfg.schedule.start_time, cfg.schedule.end_time)
 
-    main(config=cfg)
+    main(args, config=cfg)

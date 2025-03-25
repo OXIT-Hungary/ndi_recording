@@ -46,6 +46,49 @@ class BEV():
         self.start_time = time.time()
         self.end_time = 0
         
+        self.homography = self.utils.calculate_homography()
+        #rmse = self.utils.calculate_reprojection_error(homography)
+        self.onnx_session = onnxruntime.InferenceSession(self.data.model_path, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]) 
+      
+    def process_frame(self, frame):
+        img = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
+        img = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0)
+        
+        fig, ax = self.vis.draw_waterpolo_court(self.args)
+
+        # ONNX - RT_DETR
+        players_in_bev = self.utils.onnx__inference(
+            H = self.homography,
+            frame_size = (2810, 730),
+            img = img,
+            onnx_session = self.onnx_session
+        )
+
+        # Update player tracking
+        gravity_center, active_tracks = self.tracker.update(players_in_bev if players_in_bev is not None else [])
+            
+        # Draw centroid for camera movement
+        if len(self.centroid) != 0 :
+            self.centroid = self.utils.move_centroid_smoothly(self.centroid, gravity_center)
+            self.vis.draw_centroid(self.centroid, ax)
+        else:
+            self.centroid = gravity_center
+
+        # Visualization
+        self.vis.draw_current_detection(players_in_bev, ax)
+        self.vis.draw_tracked_objects(active_tracks, ax)
+        self.vis.draw_gravity_center(gravity_center, ax)
+        
+        self.data.save_result_img(plt)
+        
+        # Debug - Time
+        """ self.end_time = time.time()
+        print("Full cycle in sec: ",self.end_time - self.start_time)
+        self.start_time = time.time() """
+        
+        plt.cla()
+        plt.close()
+      
     def bev_main(self):
 
         homography = self.utils.calculate_homography()
@@ -102,6 +145,7 @@ class BEV():
         self.data.create_and_save_gif()
 
         print("GIF saved as animation.gif!")
+        
 
 if __name__ == "__main__":
     

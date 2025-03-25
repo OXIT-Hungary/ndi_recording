@@ -1,7 +1,7 @@
 schedule:
   start_time: null
   end_time: null
-  duration: "00:05"
+  duration: "00:01"
 
 out_path: ./output
 
@@ -40,4 +40,4 @@ camera_system:
       crop: [420, 1150, 1190, 3390] # (top_y, top_x, bottom_y, bottom_x)
       fps: 15
   
-pano_onnx: ./rtdetrv2.onnx
+pano_onnx: onnx/rtdetrv2.onnx
