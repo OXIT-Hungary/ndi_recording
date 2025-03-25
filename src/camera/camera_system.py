@@ -9,6 +9,7 @@ import threading
 import time
 import onnxruntime
 from collections import Counter, deque
+import multiprocessing
 
 
 class CameraSystem:
@@ -17,19 +18,23 @@ class CameraSystem:
     def __init__(self, config: CameraSystemConfig) -> None:
         self.config = config
 
-        self.pano_camera = PanoCamrera(config=config.pano_camera) if config.pano_camera.enable else None
+        self.queues = {}
+        self.cameras = {}
 
-        self.ptz_cameras = None
+        if config.pano_camera.enable:
+            self.queues['pano'] = multiprocessing.Queue(maxsize=10)
+            self.cameras['pano'] = PanoCamrera(config=config.pano_camera, queue=self.queues['pano'])
+
         if any([cfg.enable for cfg in config.ptz_cameras.values()]):
             sources = self._init_ndi()
 
-            self.ptz_cameras = {}
             for name, cfg in config.ptz_cameras.items():
                 src = next((s for s in sources if cfg.ip in s.url_address), None)
+                self.queues[name] = multiprocessing.Queue(maxsize=10)
 
                 if hasattr(ptz_camera, cfg.name):
                     cls = getattr(ptz_camera, cfg.name)
-                    self.ptz_cameras[name] = cls(config=cfg, src=src)
+                    self.cameras[name] = cls(config=cfg, src=src, queue=self.queues[name])
                 else:
                     raise ValueError(f"Class '{cfg.name}' not found in PTZCamera.py.")
 
@@ -63,7 +68,10 @@ class CameraSystem:
     def start(self) -> None:
         """Starts player detection on panorama frames and rotates PTZ cameras to action."""
 
-        if self.pano_camera:
+        for camera in self.cameras:
+            camera.start()
+
+        if 'pano' in self.cameras:
             self.thread_detect_and_track = threading.Thread(target=self._detect_and_track, args=())
             self.thread_detect_and_track.start()
         else:
@@ -72,18 +80,11 @@ class CameraSystem:
     def stop(self) -> None:
         self._stop = True
 
-    def get_frames(self) -> dict[str, np.ndarray]:
-        """ """
+        for cam in self.cameras:
+            cam.stop()
+            cam.join()
 
-        frames = {}
-
-        for cam_name, cam in self.ptz_cameras.items():
-            frames[cam_name] = cam.get_frame()
-
-        if self.pano_camera:
-            frames['pano'] = self.pano_camera.get_frame()
-
-        return frames
+        self.thread_detect_and_track.join()
 
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 10  # 10 fps
@@ -95,7 +96,7 @@ class CameraSystem:
             while not self._stop:
                 start_time = time.time()
 
-                frame = self.pano_camera.get_frame()
+                frame = self.cameras['pano'].get_frame()
 
                 labels, boxes, scores = self.onnx_session.run(
                     output_names=None,
@@ -116,7 +117,7 @@ class CameraSystem:
                 if self.position != mode:
                     self.position = mode
 
-                    for camera in self.ptz_cameras.values():
+                    for camera in [cam for name, cam in self.cameras.items() if 'ptz' in name]:
                         camera.move_to_preset(preset=ptz_camera.NUM2PRESET[self.position], speed=0x10, easing=True)
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))

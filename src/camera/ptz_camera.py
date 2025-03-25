@@ -5,6 +5,7 @@ import numpy as np
 import threading
 import src.camera.visca as visca
 from src.config import PTZConfig
+from src.camera.camera import Camera
 import math
 import time
 
@@ -12,20 +13,23 @@ NUM2PRESET = {0: 'left', 1: 'center', 2: 'right'}
 PRESET2NUM = {'left': 0, 'center': 1, 'right': 2}
 
 
-class PTZCamera:
+class PTZCamera(Camera, threading.Thread):
     """PTZ Camera class."""
 
     PAN_SPEEDS = None
     TILT_SPEEDS = None
 
-    def __init__(self, config: PTZConfig, src) -> None:
+    def __init__(self, config: PTZConfig, src, queue) -> None:
+        super().__init__(queue=queue)
+        threading.Thread.__init__(self)
+
         self.config = config
         self.receiver = self._create_receiver(src=src)
 
         self.ip = config.ip
         self.presets = config.presets
 
-        self.thread_move = None
+        self.sleep_time = 1 / config.fps
 
     def _create_receiver(self, src):
 
@@ -37,6 +41,13 @@ class PTZCamera:
         ndi.recv_connect(receiver, src)
 
         return receiver
+
+    def run(self) -> None:
+        self.running = True
+        while self.running:
+            start_time = time.time()
+            self.queue.put(self.get_frame())
+            time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
 
     def power_on(self) -> None:
         """Powers on camera with VISCA command."""
@@ -308,5 +319,5 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, config, src):
-        super().__init__(config, src)
+    def __init__(self, config, src, queue):
+        super().__init__(config, src, queue)
