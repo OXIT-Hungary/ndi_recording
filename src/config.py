@@ -69,18 +69,20 @@ class CameraSystemConfig:
     def __init__(self, config_dict) -> None:
         self.ptz_cameras = {}
         self.pano_camera = None
+
         for cam_name, cam_config in config_dict.get("cameras", {}).items():
             if cam_name == "pano":
                 self.pano_camera = PanoramaConfig(cam_config)
             elif "ptz" in cam_name:
                 self.ptz_cameras[cam_name] = PTZConfig(cam_config)
 
+        self.pano_onnx = config_dict.get("pano_onnx", None)
+
 
 class Config:
     def __init__(self, config_dict):
         self.schedule = ScheduleConfig(config_dict=config_dict.get("schedule", {}))
         self.camera_system = CameraSystemConfig(config_dict=config_dict.get("camera_system", {}))
-        self.pano_onnx = config_dict.get("pano_onnx", None)
         self.video_writer = config_dict.get("video_writer", {})
 
         self.out_path = f"{config_dict.get('out_path', './output')}/{datetime.now().strftime('%Y%m%d_%H%M')}"
