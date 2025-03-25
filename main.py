@@ -123,7 +123,7 @@ class WriterProcess(multiprocessing.Process):
                 "-profile:v","high",
                 "-avoid_negative_ts", "make_zero",
                 "-muxdelay", "0",
-                str(os.path.join(config.out_path, f"{Path(config.out_path).stem}_pano.mp4")),
+                str(os.path.join(out_path, f"{Path(out_path).stem}_pano.mp4")),
             ],
             stdin=subprocess.PIPE,
         )
@@ -132,9 +132,9 @@ class WriterProcess(multiprocessing.Process):
     def run(self) -> None:
         try:
             while not self.event_stop.is_set():
-                frames = self.queues.get()
 
-                for cam, frame in frames.items():
+                for cam, queue in self.queues.items():
+                    frame = queue.get()
                     if frame is not None:
                         try:
                             self.writers[cam].stdin.write(frame.tobytes())
@@ -171,7 +171,9 @@ def main(config: Config) -> int:
         config=config.camera_system, out_path=config.out_path, event_stop=event_stop, queues=camera_system.queues
     )
 
-    time.sleep(60)
+    writer.start()
+    
+    time.sleep(10)
     camera_system.stop()
     event_stop.set()
 

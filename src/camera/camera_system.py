@@ -68,19 +68,19 @@ class CameraSystem:
     def start(self) -> None:
         """Starts player detection on panorama frames and rotates PTZ cameras to action."""
 
-        for camera in self.cameras:
+        for camera in self.cameras.values():
             camera.start()
 
-        if 'pano' in self.cameras:
+        """ if 'pano' in self.cameras:
             self.thread_detect_and_track = threading.Thread(target=self._detect_and_track, args=())
             self.thread_detect_and_track.start()
         else:
-            raise RuntimeError("No Panorama Camera.")
+            raise RuntimeError("No Panorama Camera.") """
 
     def stop(self) -> None:
         self._stop = True
 
-        for cam in self.cameras:
+        for cam in self.cameras.values():
             cam.stop()
             cam.join()
 
@@ -96,7 +96,7 @@ class CameraSystem:
             while not self._stop:
                 start_time = time.time()
 
-                frame = self.cameras['pano'].get_frame()
+                #frame = self.cameras['pano'].get_frame()
 
                 labels, boxes, scores = self.onnx_session.run(
                     output_names=None,

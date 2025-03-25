@@ -6,8 +6,8 @@ class Camera:
 
         self.running = False
 
-    def start(self) -> None:
-        raise NotImplementedError("Function start() must be implemented in subclass.")
+    """ def start(self) -> None:
+        raise NotImplementedError("Function start() must be implemented in subclass.") """
 
     def stop(self):
         self.running = False

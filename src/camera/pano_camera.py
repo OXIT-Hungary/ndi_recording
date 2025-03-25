@@ -10,7 +10,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
     """Panorama Camera Class."""
 
     def __init__(self, config: PanoramaConfig, queue) -> None:
-        super().__init__(queue=queue)
+        Camera.__init__(self, queue=queue)
         multiprocessing.Process.__init__(self)
 
         self.config = config

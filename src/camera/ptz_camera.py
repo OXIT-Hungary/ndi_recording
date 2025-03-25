@@ -20,7 +20,7 @@ class PTZCamera(Camera, threading.Thread):
     TILT_SPEEDS = None
 
     def __init__(self, config: PTZConfig, src, queue) -> None:
-        super().__init__(queue=queue)
+        Camera.__init__(self, queue=queue)
         threading.Thread.__init__(self)
 
         self.config = config
