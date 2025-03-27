@@ -295,6 +295,7 @@ def pano_process(
     ptz_presets,
     path,
     logger,
+    bev
 ):
     """ """
 
@@ -353,6 +354,8 @@ def pano_process(
             start_time = time.time()
 
             ret, frame = video_capture.read()
+            
+            bev.process_frame(frame) if ret else print('No_Pano_Frame')
 
             if not ret:
                 logger.warning(f"No panorama frame captured.")
@@ -575,6 +578,7 @@ def main(args, config: Config) -> int:
             presets,
             config.out_path,
             logger,
+            bev
         ),
     )
     proc_pano.start()

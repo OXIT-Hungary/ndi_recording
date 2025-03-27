@@ -34,8 +34,8 @@ camera_system:
       enable: True
       ip: 169.254.108.83
       # src: rtsp
-      # src: rtsp://169.254.108.83:554/media2/stream.sdp?profile=Profile200
-      src: /home/geri/Desktop/pano_cut.mp4
+      src: rtsp://169.254.108.83:554/media2/stream.sdp?profile=Profile200
+      # src: /home/geri/Desktop/pano_cut.mp4
       frame_size: [4416, 1600]
       crop: [420, 1150, 1190, 3390] # (top_y, top_x, bottom_y, bottom_x)
       fps: 15
