@@ -61,7 +61,7 @@
                 <h4>Schedule a New Stream</h4>
             </div>
             <div class="card-body">
-                <form id="scheduleForm" action="/v1/youtube/create-scheduled-streams" method="post">
+                <form id="scheduleForm" action="/api/v1/youtube/create-scheduled-streams" method="post">
                     <div class="mb-3">
                         <label for="title" class="form-label">Stream Title</label>
                         <input type="text" class="form-control" id="title" name="title" required>
@@ -101,7 +101,7 @@
                 if (confirm('Are you sure you want to delete this stream?')) {
                     const streamId = e.target.dataset.streamId;
                     try {
-                        const response = await fetch(`/v1/youtube/delete/${streamId}`, {
+                        const response = await fetch(`/api/v1/youtube/delete/${streamId}`, {
                             method: 'DELETE'
                         });
                         const result = await response.json();
@@ -132,7 +132,7 @@
             };
 
             try {
-                const response = await fetch('/v1/youtube/create-scheduled-streams', {
+                const response = await fetch('/api/v1/youtube/create-scheduled-streams', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

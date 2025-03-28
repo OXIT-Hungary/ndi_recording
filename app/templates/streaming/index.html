@@ -35,10 +35,10 @@
             <h4>Authentication Status: {% if is_authenticated %}Authenticated{% else %}Not Authenticated{% endif %}</h4>
             {% if not is_authenticated %}
                 <p>You need to authenticate with YouTube to use this application.</p>
-                <a href="/v1/youtube/auth" class="btn btn-primary">Authenticate with YouTube</a>
+                <a href="/api/v1/youtube/auth" class="btn btn-primary">Authenticate with YouTube</a>
             {% else %}
                 <p>You are authenticated and can use all features.</p>
-                <a href="/v1/youtube/streams" class="btn btn-success">View Scheduled Streams</a>
+                <a href="/api/v1/youtube/streams" class="btn btn-success">View Scheduled Streams</a>
             {% endif %}
         </div>
 

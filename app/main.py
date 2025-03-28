@@ -9,7 +9,7 @@ from .core.utils.custom_unique_id import custom_generate_unique_id
 
 
 
-templates_dir = Path("templates/streaming")
+templates_dir = Path("app/templates/streaming")
 if not templates_dir.exists():
     templates_dir.mkdir()
 templates = Jinja2Templates(directory=templates_dir)

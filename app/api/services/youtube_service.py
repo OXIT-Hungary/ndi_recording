@@ -8,7 +8,7 @@ from google.auth.transport.requests import Request
 from dotenv import load_dotenv
 
 from app.schemas.youtube_stream import YoutubeStreamSchedule
-from configs.configuration import settings
+from app.api.v1.configuration import settings
 
 
 class YoutubeService:

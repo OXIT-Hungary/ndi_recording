@@ -72,7 +72,7 @@ mpmath==1.3.0
     # via sympy
 multiprocess==0.70.17
     # via -r requirements/prod.in
-ndi-python==5.1.1.1
+ndi-python==5.1.1.2
     # via -r requirements/prod.in
 numpy==2.2.4
     # via
