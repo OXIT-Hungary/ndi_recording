@@ -116,6 +116,8 @@ class YoutubeService:
                 scheduled_start = broadcast["snippet"].get("scheduledStartTime")
                 scheduled_end = broadcast["snippet"].get("scheduledEndTime")
 
+                privacy_status = broadcast["status"].get("privacyStatus", "unknown")
+
                 # Convert scheduled times to datetime objects if they exist
                 start_time = datetime.fromisoformat(scheduled_start.replace('Z', '+00:00')) if scheduled_start else None
                 end_time = datetime.fromisoformat(scheduled_end.replace('Z', '+00:00')) if scheduled_end else None
@@ -140,6 +142,7 @@ class YoutubeService:
                         "description": broadcast["snippet"]["description"],
                         "scheduled_start_time": formatted_start,
                         "scheduled_end_time": formatted_end,
+                        "privacy_status": privacy_status,
                         "status": lifecycle_status
                     }
                     active_streams.append(stream)
@@ -188,7 +191,9 @@ class YoutubeService:
                     "scheduledEndTime": stream_details.end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
                 },
                 "status": {
-                    "privacyStatus": stream_details.privacy_status
+                    "privacyStatus": stream_details.privacy_status,
+                    "selfDeclaredMadeForKids": False,
+                    "publishAt": None
                 },
                 "contentDetails": {
                     "enableAutoStart": True
