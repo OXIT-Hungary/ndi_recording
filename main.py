@@ -287,6 +287,71 @@ def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
         current_pan, current_tilt = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=next_tilt)
 
 
+def hex_to_signed_int(hex_value):  
+    int_value = int(hex_value, 16)
+    if int_value > 0x7FFF:  # Handle two’s complement negative values
+        int_value -= 0x10000
+    return int_value
+
+def visca_to_euler(hex_pan, hex_tilt):
+    pan_int = hex_to_signed_int(hex_pan)
+    tilt_int = hex_to_signed_int(hex_tilt)
+
+    pan_deg = pan_int / 16.0
+    tilt_deg = tilt_int / 16.0
+
+    return pan_deg, tilt_deg
+
+def euler_to_visca(pan_deg, tilt_deg):
+
+    def signed_int_to_hex(value):
+        if value < 0:
+            value = (1 << 20) + value  # Convert to two's complement for 20-bit representation
+        return f"0x{value:05X}"  # Ensure 5-digit hex format
+
+    pan_int = int(pan_deg * 16)
+    tilt_int = int(tilt_deg * 16)
+
+    hex_pan = signed_int_to_hex(pan_int)
+    hex_tilt = signed_int_to_hex(tilt_int)
+
+    return hex_pan, hex_tilt
+
+def calc_pan_shift(bev_x_axis_line: int, x_axis_value: int, pan_distance: float) -> float:
+    result_pan = 1.0
+
+    bev_percentage = (x_axis_value / bev_x_axis_line) * 100
+    result_pan = pan_distance * (bev_percentage / 100)
+    print(result_pan)
+    return result_pan
+
+def get_pan_from_bev(x_axis_value):
+    #get the bev-x value (horizental coordinate). between -10 to 10 
+
+    bev_x_axis_line = 20 #
+    #x_axis_value = 7 + 10 #add +10 constantly 
+
+    pan_left_hexa = '0xff06' #configbol jonnek, pan left es right value of the presets
+    pan_right_hexa = '0x100f1'
+    tilt_hexa = '0xfe86' #egyelore ez nem valtozik
+
+
+    pan_deg_left, tilt_deg = visca_to_euler(pan_left_hexa, tilt_hexa)
+    pan_deg_right, tilt_deg = visca_to_euler(pan_right_hexa, tilt_hexa)
+
+    pan_deg_left = abs(pan_deg_left) 
+    pan_deg_right = abs(pan_deg_right)
+
+    pan_distance = pan_deg_left + pan_deg_right
+
+    res_pan = calc_pan_shift(bev_x_axis_line, x_axis_value, pan_distance)
+
+    pan_hex, tilt_hex = euler_to_visca(res_pan, tilt_deg)
+    print(f"Pan HEX: {pan_hex}, Tilt HEX: {tilt_hex}")
+
+    return pan_hex, tilt_hex
+    # pan_hex, tilt_hexet kell elkuldeni a kameranak
+
 def pano_process(
     config: PanoramaConfig,
     onnx_file: str,
@@ -361,7 +426,14 @@ def pano_process(
 
             ret, frame = video_capture.read()
             
-            bev.process_frame(frame, onnx_session, True) if ret else print('No_Pano_Frame')
+            centroid_pos = bev.process_frame(frame, onnx_session, True) if ret else print('No_Pano_Frame')
+
+            if centroid_pos[0] < -10:
+                centroid_pos[0] = -10
+            elif centroid_pos[0] > 10: 
+                centroid_pos[0] = 10
+
+            pan_hex, tilt_hex = get_pan_from_bev(centroid_pos[0])
 
             if not ret:
                 logger.warning(f"No panorama frame captured.")
@@ -381,7 +453,9 @@ def pano_process(
                 },
             )
 
-            most_populated_bucket = process_buckets(
+            move('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
+
+            """ most_populated_bucket = process_buckets(
                 boxes=boxes,
                 labels=labels,
                 scores=scores,
@@ -401,7 +475,7 @@ def pano_process(
                     move_processes.append(p)
 
                 for p in move_processes:
-                    p.join()
+                    p.join() """
 
             time.sleep(max(sleep_time - (time.time() - start_time), 0))
 

@@ -91,6 +91,8 @@ class BEV():
             self.data.save_result_img(plt)
             plt.cla()
             plt.close()
+
+        return self.centroid
         
       
     def bev_main(self):
