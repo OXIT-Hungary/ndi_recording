@@ -340,12 +340,18 @@ def pano_process(
     bucket_width = config.frame_size[0] // 3
 
     onnx_session = onnxruntime.InferenceSession(onnx_file, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    
     logger.info("ONNX Model Device: %s", onnxruntime.get_device())
 
     window = deque()
     freq_counter = Counter()
 
     video_capture = cv2.VideoCapture(config.src)
+    """ video_capture = cv2.VideoCapture(config.src, cv2.CAP_FFMPEG)
+    video_capture.set(cv2.CAP_PROP_BUFFERSIZE, 3) 
+    "-rtbufsize",
+    "100M",
+    """
 
     start_event.set()
     logger.info("Process Pano - Event Set!")
@@ -355,7 +361,7 @@ def pano_process(
 
             ret, frame = video_capture.read()
             
-            bev.process_frame(frame) if ret else print('No_Pano_Frame')
+            bev.process_frame(frame, onnx_session, True) if ret else print('No_Pano_Frame')
 
             if not ret:
                 logger.warning(f"No panorama frame captured.")
@@ -364,7 +370,7 @@ def pano_process(
             if config.crop:
                 frame = frame[config.crop[0] : config.crop[2], config.crop[1] : config.crop[3]]
 
-            ffmpeg_process.stdin.write(frame.tobytes())
+            #ffmpeg_process.stdin.write(frame.tobytes())
             ffmpeg_process.stdin.flush()
 
             labels, boxes, scores = onnx_session.run(
@@ -611,8 +617,8 @@ def main(args, config: Config) -> int:
         proc_pano.kill()
 
     logger.info("Finished recording.")
-    for cfg in config.camera_system.ptz_cameras.values():
-        visca.power_off(cfg.ip)
+    """ for cfg in config.camera_system.ptz_cameras.values():
+        visca.power_off(cfg.ip) """
 
     return 0
 
