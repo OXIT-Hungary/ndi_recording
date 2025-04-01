@@ -44,6 +44,7 @@
                             <p><strong>Description:</strong> {{ stream.description }}</p>
                             <p><strong>Scheduled Start:</strong> {{ stream.scheduled_start_time }}</p>
                             <p><strong>Scheduled End:</strong> {{ stream.scheduled_end_time }}</p>
+                            <p><strong>Category:</strong> {{ stream.category }}</p>
                             <button class="btn btn-danger btn-sm delete-stream" data-stream-id="{{ stream.stream_id }}">Delete Stream</button>
                         </div>
                     </div>
@@ -81,13 +82,23 @@
                             <input type="datetime-local" class="form-control" id="end_time" name="end_time" required>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="privacy_status" class="form-label">Privacy Status</label>
-                        <select class="form-select" id="privacy_status" name="privacy_status" required>
-                            <option value="private">Private</option>
-                            <option value="public">Public</option>
-                            <option value="unlisted">Unlisted</option>
-                        </select>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="privacy_status" class="form-label">Privacy Status</label>
+                            <select class="form-select" id="privacy_status" name="privacy_status" required>
+                                <option value="private">Private</option>
+                                <option value="public">Public</option>
+                                <option value="unlisted">Unlisted</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="category" class="form-label">Category</label>
+                            <select class="form-select" id="category" name="category">
+                                <option value="Ismeretlen" selected>Unknown</option>
+                                <option value="Férfi">Male</option>
+                                <option value="Női">Female</option>
+                            </select>
+                        </div>
                     </div>
                     <button type="submit" class="btn btn-primary">Schedule Stream</button>
                 </form>
@@ -129,7 +140,8 @@
                 description: formData.get('description'),
                 privacy_status: formData.get('privacy_status'),
                 start_time: new Date(formData.get('start_time')).toISOString(),
-                end_time: new Date(formData.get('end_time')).toISOString()
+                end_time: new Date(formData.get('end_time')).toISOString(),
+                category: formData.get('category')
             };
 
             try {

@@ -26,7 +26,8 @@ class YoutubeService:
                 if credentials and credentials.valid:
                     # Load valid credentials from token file
                     self.credentials = credentials
-                    self.youtube = build(settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION, credentials=credentials)
+                    self.youtube = build(settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION,
+                                         credentials=credentials)
                     print("Credentials found and loaded successfully")
                     return
 
@@ -37,7 +38,8 @@ class YoutubeService:
                         with open(settings.TOKEN_FILE_PATH, 'wb') as token:
                             pickle.dump(credentials, token)
                         self.credentials = credentials
-                        self.youtube = build(settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION, credentials=credentials)
+                        self.youtube = build(settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION,
+                                             credentials=credentials)
                         print("Credentials found and refreshed the token successfully")
                         return
                     except Exception as e:
@@ -227,7 +229,7 @@ class YoutubeService:
         # print(f"TOKEN: {request['http']['credentials']['token']}")
         return response["id"]
 
-    def get_stream_details(self, broadcast_id: str):
+    def get_stream_details(self, broadcast_id: str, category: str):
         if not self.is_authenticated():
             raise ValueError("Not authenticated with YouTube API")
 
@@ -260,7 +262,8 @@ class YoutubeService:
                 "stream_key": stream_details['streamName'],
                 "ingestion_address": stream_details['ingestionAddress'],
                 "broadcast_id": broadcast_id,
-                "stream_id": stream_id
+                "stream_id": stream_id,
+                "category": category
             }
 
         except Exception as e:
@@ -277,7 +280,7 @@ class YoutubeService:
             self.start_live_broadcast(broadcast_id)
 
             # Retrieve and return stream details
-            stream_info = self.get_stream_details(broadcast_id)
+            stream_info = self.get_stream_details(broadcast_id, stream_details.category)
             print("Successfully started stream")
             return stream_info
 

@@ -8,3 +8,4 @@ class YoutubeStreamSchedule(BaseModel):
     privacy_status: str
     start_time: datetime
     end_time: datetime
+    category: str
