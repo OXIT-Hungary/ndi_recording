@@ -418,6 +418,8 @@ def pano_process(
     "100M",
     """
 
+    last_pos = []
+
     start_event.set()
     logger.info("Process Pano - Event Set!")
     try:
@@ -453,8 +455,12 @@ def pano_process(
                 elif centroid_pos[0] > 10: 
                     centroid_pos[0] = 10
 
-                pan_hex, tilt_hex = get_pan_from_bev(centroid_pos[0])
+                if len(last_pos) == 0:
+                    last_pos = centroid_pos
+                elif abs(centroid_pos[0]-last_pos[0]) > 1 :
+                    last_pos = centroid_pos
 
+                pan_hex, tilt_hex = get_pan_from_bev(last_pos[0])
                 move('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
 
             """ most_populated_bucket = process_buckets(

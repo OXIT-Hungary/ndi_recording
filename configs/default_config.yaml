@@ -1,7 +1,7 @@
 schedule:
   start_time: null
   end_time: null
-  duration: "00:10"
+  duration: "00:30"
 
 out_path: ./output
 
