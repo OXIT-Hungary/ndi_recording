@@ -70,12 +70,13 @@ class BEV():
                 
         #if players_in_bev != None :
             
-            # Draw centroid for camera movement
-        if len(self.centroid) != 0 :
-            self.centroid = self.utils.move_centroid_smoothly(self.centroid, gravity_center)
-            if debug: self.vis.draw_centroid(self.centroid, ax)
-        else:
-            self.centroid = gravity_center
+        # Draw centroid for camera movement
+        if not None in gravity_center:
+            if len(self.centroid) != 0:
+                self.centroid = self.utils.move_centroid_smoothly(self.centroid, gravity_center)
+                if debug: self.vis.draw_centroid(self.centroid, ax)
+            else:
+                self.centroid = gravity_center
 
         print(self.centroid)
         

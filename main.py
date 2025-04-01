@@ -426,18 +426,6 @@ def pano_process(
 
             ret, frame = video_capture.read()
 
-            #Cropping out court
-            frame = frame[config.crop[0]:config.crop[2], config.crop[1]:config.crop[3]]
-            
-            centroid_pos = bev.process_frame(frame, onnx_session, True) if ret else print('No_Pano_Frame')
-
-            if centroid_pos[0] < -10:
-                centroid_pos[0] = -10
-            elif centroid_pos[0] > 10: 
-                centroid_pos[0] = 10
-
-            pan_hex, tilt_hex = get_pan_from_bev(centroid_pos[0])
-
             if not ret:
                 logger.warning(f"No panorama frame captured.")
                 raise KeyboardInterrupt()
@@ -456,7 +444,18 @@ def pano_process(
                 },
             )
 
-            move('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
+            centroid_pos = bev.process_frame(frame, onnx_session) if ret else print('No_Pano_Frame')
+
+            centroid_pos = list(centroid_pos)
+            if not None in centroid_pos and len(centroid_pos)!=0:
+                if centroid_pos[0] < -10:
+                    centroid_pos[0] = -10
+                elif centroid_pos[0] > 10: 
+                    centroid_pos[0] = 10
+
+                pan_hex, tilt_hex = get_pan_from_bev(centroid_pos[0])
+
+                move('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
 
             """ most_populated_bucket = process_buckets(
                 boxes=boxes,
