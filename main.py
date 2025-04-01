@@ -422,6 +422,8 @@ def pano_process(
 
     start_event.set()
     logger.info("Process Pano - Event Set!")
+
+    ii = 0
     try:
         while not stop_event.is_set():
             start_time = time.time()
@@ -438,22 +440,22 @@ def pano_process(
             #ffmpeg_process.stdin.write(frame.tobytes())
             ffmpeg_process.stdin.flush()
 
-            labels, boxes, scores = onnx_session.run(
+            """ labels, boxes, scores = onnx_session.run(
                 output_names=None,
                 input_feed={
                     'images': transform(frame),
                     "orig_target_sizes": np.array([config.frame_size]),
                 },
-            )
+            ) """
 
-            centroid_pos = bev.process_frame(frame, onnx_session) if ret else print('No_Pano_Frame')
-
+            centroid_pos = bev.process_frame(frame, onnx_session, ii, True) if ret else print('No_Pano_Frame')
+            ii = ii + 1
             centroid_pos = list(centroid_pos)
             if not None in centroid_pos and len(centroid_pos)!=0:
-                if centroid_pos[0] < -10:
-                    centroid_pos[0] = -10
-                elif centroid_pos[0] > 10: 
-                    centroid_pos[0] = 10
+                if centroid_pos[0] < -15:
+                    centroid_pos[0] = -15
+                elif centroid_pos[0] > 15: 
+                    centroid_pos[0] = 15
 
                 if len(last_pos) == 0:
                     last_pos = centroid_pos

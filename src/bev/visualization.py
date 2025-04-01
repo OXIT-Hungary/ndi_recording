@@ -8,7 +8,7 @@ class Visualization:
     def draw_waterpolo_court(self, args):
         fig, ax = plt.subplots()
         ax.set_aspect('equal')
-        ax.set_xlim(-args.court_width/2, args.court_width/2)
+        ax.set_xlim(-args.court_width, args.court_width)
         ax.set_ylim(-args.court_height/2, args.court_height/2)
         ax.set_title("BEV")
         ax.grid(False)

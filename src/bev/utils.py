@@ -14,17 +14,17 @@ class Utils:
     
     def __init__(self):
         self.world_points = np.array([
-            [-10, 10],
-            [10, 10],
-            [-10, -10],
-            [10, -10]
+            [-25, 10],
+            [25, 10],
+            [-25, -10],
+            [25, -10]
         ], dtype=np.float32)
 
         self.img_pts = np.array([
-            [937, 182],
-            [1968, 166],
-            [564, 631],
-            [2322, 578]
+            [549, 103],
+            [2315, 71],
+            [73, 470],
+            [2746, 407]
         ], dtype=np.float32)
     
     def project_centroids_to_court(self, bboxes, labels, scores, H):
@@ -100,11 +100,13 @@ class Utils:
     def onnx__inference(
         self,
         H: npt.ArrayLike = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]),
-        frame_size: npt.ArrayLike = (2810, 730),
+        frame_size: npt.ArrayLike = (2810, 590),
         img: np.ndarray = None,
+        frame: np.ndarray = None,
         onnx_session: onnxruntime.InferenceSession = None,
+        ii: int = 0
     ) -> npt.ArrayLike:
-        frame_size = np.array([[2810,  730]])
+        frame_size = np.array([[2810,  590]])
 
         labels, boxes, scores = onnx_session.run(
             output_names=None,
@@ -113,6 +115,25 @@ class Utils:
                 "orig_target_sizes": frame_size,
             },
         )
+        target_class_id = 2  
+        #testing this shit
+        bboxes_player = boxes[(labels == target_class_id) & (scores > 0.5)]
+
+        # Draw the bounding boxes
+        for box in bboxes_player:
+            x_min, y_min, x_max, y_max = map(int, box)  # Convert to integers
+            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)  # Green box
+            cv2.putText(
+                frame,
+                f"Class {target_class_id}: {scores[labels == target_class_id].max():.2f}",
+                (x_min, y_min - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2,
+            )
+            cv2.imwrite("dataset/output/frame_" + str(ii) + "_f.jpg", frame)
+
 
         projected_players = self.project_centroids_to_court(boxes, labels, scores, H)
 
