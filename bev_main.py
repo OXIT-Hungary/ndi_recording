@@ -51,6 +51,7 @@ class BEV():
         #self.onnx_session = onnxruntime.InferenceSession(self.data.model_path, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]) 
       
     def process_frame(self, frame, onnx_session, debug = False):
+
         img = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
         img = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0)
         

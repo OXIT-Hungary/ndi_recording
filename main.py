@@ -425,6 +425,9 @@ def pano_process(
             start_time = time.time()
 
             ret, frame = video_capture.read()
+
+            #Cropping out court
+            frame = frame[config.crop[0]:config.crop[2], config.crop[1]:config.crop[3]]
             
             centroid_pos = bev.process_frame(frame, onnx_session, True) if ret else print('No_Pano_Frame')
 
