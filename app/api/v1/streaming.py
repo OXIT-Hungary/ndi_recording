@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from app.api.services.youtube_service import youtube_service
 from app.schemas.youtube_stream import YoutubeStreamSchedule
 
-templates = Jinja2Templates(directory="templates/streaming")
+templates = Jinja2Templates(directory="app/templates/streaming")
 
 youtube_router = APIRouter(
     prefix="/youtube",
