@@ -229,7 +229,7 @@ class YoutubeService:
         # print(f"TOKEN: {request['http']['credentials']['token']}")
         return response["id"]
 
-    def get_stream_details(self, broadcast_id: str, category: str):
+    def get_stream_details(self, broadcast_id: str):
         if not self.is_authenticated():
             raise ValueError("Not authenticated with YouTube API")
 
@@ -262,8 +262,7 @@ class YoutubeService:
                 "stream_key": stream_details['streamName'],
                 "ingestion_address": stream_details['ingestionAddress'],
                 "broadcast_id": broadcast_id,
-                "stream_id": stream_id,
-                "category": category
+                "stream_id": stream_id
             }
 
         except Exception as e:
@@ -280,7 +279,7 @@ class YoutubeService:
             self.start_live_broadcast(broadcast_id)
 
             # Retrieve and return stream details
-            stream_info = self.get_stream_details(broadcast_id, stream_details.category)
+            stream_info = self.get_stream_details(broadcast_id)
             print("Successfully started stream")
             return stream_info
 

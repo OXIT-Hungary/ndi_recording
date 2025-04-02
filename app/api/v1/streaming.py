@@ -84,7 +84,7 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
             return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
 
         new_stream = youtube_service.create_scheduled_stream(stream_details)
-        return new_stream
+        print(new_stream)
     except Exception as e:
         error_message = f"Error creating stream: {str(e)}"
         return templates.TemplateResponse(
