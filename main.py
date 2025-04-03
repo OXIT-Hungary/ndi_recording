@@ -17,6 +17,8 @@ from tqdm import tqdm
 import src.visca as visca
 from src.config import Config, PanoramaConfig, load_config
 from src.utils.logger import setup_logger
+from src.stream import YouTubeStream
+
 
 from bev_main import BEV
 
@@ -234,7 +236,7 @@ def wait_until_position_reached(ip, dest_pan, dest_tilt, threshold=15):
 
         pan, tilt = ret
 
-        distance = math.sqrt((dest_pan - pan) ** 2 )
+        distance = math.sqrt((dest_pan - pan) ** 2)
 
         if distance <= threshold:
             return pan  # Exit when within the threshold
@@ -255,6 +257,7 @@ def move(ip, pan_pos, tilt_pos, speed, wait_for_response: bool = False) -> None:
 
     visca.send_command(ip=ip, command=command, wait_for_response=wait_for_response)
 
+
 def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
     start_pan, _ = visca.get_camera_pan_tilt(ip)  # Ignore tilt position
     pan_positions, start_pan = calculate_intermediate_positions(start_pan, pan_pos, steps)
@@ -267,19 +270,33 @@ def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
             idx_step=idx,
             steps=len(pan_positions),
             max_speed=max_speed,
-        )[0]  # Extract only pan speed
+        )[
+            0
+        ]  # Extract only pan speed
 
         # Create VISCA absolute position command (only pan)
-        command = bytes([
-            0x81, 0x01, 0x06, 0x02,  # VISCA header
-            pan_speed, pan_speed,  # Pan speed, tilt speed set to 0
-            (next_pan >> 12) & 0x0F, (next_pan >> 8) & 0x0F, (next_pan >> 4) & 0x0F, next_pan & 0x0F,  # Pan position
-            (tilt_pos >> 12) & 0x0F, (tilt_pos >> 8) & 0x0F, (tilt_pos >> 4) & 0x0F, tilt_pos & 0x0F,
-            0xFF
-        ])
+        command = bytes(
+            [
+                0x81,
+                0x01,
+                0x06,
+                0x02,  # VISCA header
+                pan_speed,
+                pan_speed,  # Pan speed, tilt speed set to 0
+                (next_pan >> 12) & 0x0F,
+                (next_pan >> 8) & 0x0F,
+                (next_pan >> 4) & 0x0F,
+                next_pan & 0x0F,  # Pan position
+                (tilt_pos >> 12) & 0x0F,
+                (tilt_pos >> 8) & 0x0F,
+                (tilt_pos >> 4) & 0x0F,
+                tilt_pos & 0x0F,
+                0xFF,
+            ]
+        )
 
         visca.send_command(ip=ip, command=command)
-        #current_pan = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=None)
+        # current_pan = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=None)
 
 
 """ def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
@@ -313,11 +330,12 @@ def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
         current_pan, current_tilt = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=next_tilt) """
 
 
-def hex_to_signed_int(hex_value):  
+def hex_to_signed_int(hex_value):
     int_value = int(hex_value, 16)
     if int_value > 0x7FFF:  # Handle two’s complement negative values
         int_value -= 0x10000
     return int_value
+
 
 def visca_to_euler(hex_pan, hex_tilt):
     pan_int = hex_to_signed_int(hex_pan)
@@ -327,6 +345,7 @@ def visca_to_euler(hex_pan, hex_tilt):
     tilt_deg = tilt_int / 16.0
 
     return pan_deg, tilt_deg
+
 
 def euler_to_visca(pan_deg, tilt_deg):
 
@@ -343,29 +362,30 @@ def euler_to_visca(pan_deg, tilt_deg):
 
     return hex_pan, hex_tilt
 
+
 def calc_pan_shift(bev_x_axis_line: int, x_axis_value: int, pan_distance: float) -> float:
     result_pan = 1.0
 
     bev_percentage = (x_axis_value / bev_x_axis_line) * 100
     result_pan = pan_distance * (bev_percentage / 100)
-    #print(result_pan)
+    # print(result_pan)
     return result_pan
 
+
 def get_pan_from_bev(x_axis_value, presets):
-    #get the bev-x value (horizental coordinate). between -10 to 10 
+    # get the bev-x value (horizental coordinate). between -10 to 10
 
-    bev_x_axis_line = 20 #
-    #x_axis_value = 7 + 10 #add +10 constantly 
+    bev_x_axis_line = 20  #
+    # x_axis_value = 7 + 10 #add +10 constantly
 
-    pan_left_hexa = hex(presets['presets']['left'][0]) #configbol jonnek, pan left es right value of the presets
+    pan_left_hexa = hex(presets['presets']['left'][0])  # configbol jonnek, pan left es right value of the presets
     pan_right_hexa = hex(presets['presets']['right'][0])
-    tilt_hexa = hex(presets['presets']['left'][1]) #egyelore ez nem valtozik
-
+    tilt_hexa = hex(presets['presets']['left'][1])  # egyelore ez nem valtozik
 
     pan_deg_left, tilt_deg = visca_to_euler(pan_left_hexa, tilt_hexa)
     pan_deg_right, tilt_deg = visca_to_euler(pan_right_hexa, tilt_hexa)
 
-    pan_deg_left = abs(pan_deg_left) 
+    pan_deg_left = abs(pan_deg_left)
     pan_deg_right = abs(pan_deg_right)
 
     pan_distance = pan_deg_left + pan_deg_right
@@ -373,20 +393,14 @@ def get_pan_from_bev(x_axis_value, presets):
     res_pan = calc_pan_shift(bev_x_axis_line, x_axis_value, pan_distance)
 
     pan_hex, tilt_hex = euler_to_visca(res_pan, tilt_deg)
-    #print(f"Pan HEX: {pan_hex}, Tilt HEX: {tilt_hex}")
+    # print(f"Pan HEX: {pan_hex}, Tilt HEX: {tilt_hex}")
 
     return pan_hex, tilt_hex
     # pan_hex, tilt_hexet kell elkuldeni a kameranak
 
+
 def pano_process(
-    config: PanoramaConfig,
-    onnx_file: str,
-    stop_event: Event,
-    start_event: Event,
-    ptz_presets,
-    path,
-    logger,
-    bev
+    config: PanoramaConfig, onnx_file: str, stop_event: Event, start_event: Event, ptz_presets, path, logger, bev
 ):
     """ """
 
@@ -431,7 +445,7 @@ def pano_process(
     bucket_width = config.frame_size[0] // 3
 
     onnx_session = onnxruntime.InferenceSession(onnx_file, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
-    
+
     logger.info("ONNX Model Device: %s", onnxruntime.get_device())
 
     window = deque()
@@ -465,8 +479,8 @@ def pano_process(
             if config.crop:
                 frame = frame[config.crop[0] : config.crop[2], config.crop[1] : config.crop[3]]
 
-            #ffmpeg_process.stdin.write(frame.tobytes())
-            #ffmpeg_process.stdin.flush()
+            # ffmpeg_process.stdin.write(frame.tobytes())
+            # ffmpeg_process.stdin.flush()
 
             """ labels, boxes, scores = onnx_session.run(
                 output_names=None,
@@ -480,25 +494,25 @@ def pano_process(
             ii = ii + 1
             centroid_pos = list(centroid_pos)
 
-            if not None in centroid_pos and len(centroid_pos)!=0:
+            if not None in centroid_pos and len(centroid_pos) != 0:
                 if centroid_pos[0] < -dist_threshold:
                     centroid_pos[0] = -dist_threshold
-                elif centroid_pos[0] > dist_threshold: 
+                elif centroid_pos[0] > dist_threshold:
                     centroid_pos[0] = dist_threshold
 
                 if len(last_pos) == 0:
                     last_pos = centroid_pos
-                elif abs(centroid_pos[0]-last_pos[0]) > 1 :
+                elif abs(centroid_pos[0] - last_pos[0]) > 1:
                     last_pos = centroid_pos
 
-                #print(ptz_presets)
+                # print(ptz_presets)
 
                 pan_hex, tilt_hex = get_pan_from_bev(last_pos[0], ptz_presets['192.168.33.101'])
                 move('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
 
                 pan_hex, tilt_hex = get_pan_from_bev(-last_pos[0], ptz_presets['192.168.33.102'])
                 move('192.168.33.102', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
-                #move_with_easing('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 10, 0x10)
+                # move_with_easing('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 10, 0x10)
 
                 """ move_processes = []
                 p = Process(target=move_with_easing, args=('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 50, 0x5))
@@ -632,7 +646,9 @@ class NDIReceiver:
         self.ffmpeg_process.wait()
 
 
-def ndi_receiver_process(src, idx: int, path, stop_event: Event, logger, codec: str = "h264_nvenc", fps: int = 30):
+def ndi_receiver_process(
+    src, idx: int, path, stop_event: Event, logger, strm, codec: str = "h264_nvenc", fps: int = 30
+):
 
     path = os.path.join(path, f"{Path(path).stem}_cam{idx}.mp4")
     receiver = NDIReceiver(src, idx, path, logger, codec, fps)
@@ -644,6 +660,10 @@ def ndi_receiver_process(src, idx: int, path, stop_event: Event, logger, codec: 
             frame, t = receiver.get_frame()
             if frame is not None and t == ndi.FrameType.FRAME_TYPE_VIDEO:
                 try:
+                    if strm:
+                        strm.stdin.write(frame.tobytes())
+                        strm.stdin.flush()
+
                     receiver.ffmpeg_process.stdin.write(frame.tobytes())
                     receiver.ffmpeg_process.stdin.flush()
                 except BrokenPipeError as e:
@@ -667,9 +687,9 @@ def start_cam(ip, preset) -> None:
     move(ip=ip, pan_pos=preset[0], tilt_pos=preset[1], speed=0x14)
 
 
-def main(args, config: Config) -> int:
-    
-    bev = BEV(args)
+def main(config: Config, stream) -> int:
+
+    bev = BEV(config)
 
     processes = []
     for cfg in config.camera_system.ptz_cameras.values():
@@ -699,10 +719,11 @@ def main(args, config: Config) -> int:
         cfg.ip: {'presets': cfg.presets, 'speed': cfg.speed} for cfg in config.camera_system.ptz_cameras.values()
     }
 
+    youtube_stream = YouTubeStream(token=stream["stream_key"])
+    youtube_stream.start()
+
     start_event = Event()
     stop_event = Event()
-
-    print('')
 
     proc_pano = Process(
         target=pano_process,
@@ -714,7 +735,7 @@ def main(args, config: Config) -> int:
             presets,
             config.out_path,
             logger,
-            bev
+            bev,
         ),
     )
     proc_pano.start()
@@ -722,7 +743,11 @@ def main(args, config: Config) -> int:
     start_event.wait()
     processes = []
     for idx, source in enumerate(sources):
-        p = Process(target=ndi_receiver_process, args=(source, idx, config.out_path, stop_event, logger))
+        strm = youtube_stream if idx == 0 else None
+        p = Process(
+            target=ndi_receiver_process,
+            args=(source, idx, config.out_path, stop_event, logger, strm),
+        )
         processes.append(p)
         p.start()
 
@@ -763,12 +788,14 @@ if __name__ == "__main__":
     parser.add_argument("--start_time", type=str, required=False, default=None)
     parser.add_argument("--end_time", type=str, required=False, default=None)
     parser.add_argument("--duration", type=str, required=False, default=None)
-    
+
     # BEV arguments
     parser.add_argument('--court-width', type=float, default=25.0, help='Width of the court in meters (default: 30)')
     parser.add_argument('--court-height', type=float, default=20.0, help='Height of the court in meters (default: 20)')
     parser.add_argument('--no-boundary', action='store_false', dest='draw_boundary', help='Disable court boundary')
-    parser.add_argument('--no-half-line', action='store_false', dest='draw_half_line', help='Disable half-distance line')
+    parser.add_argument(
+        '--no-half-line', action='store_false', dest='draw_half_line', help='Disable half-distance line'
+    )
     parser.add_argument('--no-2m', action='store_false', dest='draw_2m_line', help='Disable 2-meter lines')
     parser.add_argument('--no-5m', action='store_false', dest='draw_5m_line', help='Disable 5-meter lines')
     parser.add_argument('--no-6m', action='store_false', dest='draw_6m_line', help='Disable 6-meter lines')
