@@ -89,7 +89,7 @@ class BEV():
                 else:
                     self.centroid = gravity_center
 
-            print(self.centroid)
+            #print(self.centroid)
         
             # Debug - Time
             """ self.end_time = time.time()

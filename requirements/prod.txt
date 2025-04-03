@@ -71,3 +71,10 @@ typing-extensions==4.12.2
     #   uvicorn
 uvicorn==0.34.0
     # via -r requirements/prod.in
+
+scipy
+open3d
+matplotlib
+imageio
+filterpy
+

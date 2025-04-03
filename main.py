@@ -348,7 +348,7 @@ def calc_pan_shift(bev_x_axis_line: int, x_axis_value: int, pan_distance: float)
 
     bev_percentage = (x_axis_value / bev_x_axis_line) * 100
     result_pan = pan_distance * (bev_percentage / 100)
-    print(result_pan)
+    #print(result_pan)
     return result_pan
 
 def get_pan_from_bev(x_axis_value, presets):
@@ -373,7 +373,7 @@ def get_pan_from_bev(x_axis_value, presets):
     res_pan = calc_pan_shift(bev_x_axis_line, x_axis_value, pan_distance)
 
     pan_hex, tilt_hex = euler_to_visca(res_pan, tilt_deg)
-    print(f"Pan HEX: {pan_hex}, Tilt HEX: {tilt_hex}")
+    #print(f"Pan HEX: {pan_hex}, Tilt HEX: {tilt_hex}")
 
     return pan_hex, tilt_hex
     # pan_hex, tilt_hexet kell elkuldeni a kameranak
@@ -415,7 +415,7 @@ def pano_process(
             "-pix_fmt",
             "yuv420p",
             "-b:v",
-            "20000k",
+            "30000k",
             "-preset",
             "fast",
             "-profile:v",
@@ -466,7 +466,7 @@ def pano_process(
                 frame = frame[config.crop[0] : config.crop[2], config.crop[1] : config.crop[3]]
 
             #ffmpeg_process.stdin.write(frame.tobytes())
-            ffmpeg_process.stdin.flush()
+            #ffmpeg_process.stdin.flush()
 
             """ labels, boxes, scores = onnx_session.run(
                 output_names=None,
@@ -476,7 +476,7 @@ def pano_process(
                 },
             ) """
 
-            centroid_pos = bev.process_frame(frame, onnx_session, ii, True) if ret else print('No_Pano_Frame')
+            centroid_pos = bev.process_frame(frame, onnx_session, ii, False) if ret else print('No_Pano_Frame')
             ii = ii + 1
             centroid_pos = list(centroid_pos)
 
@@ -491,7 +491,7 @@ def pano_process(
                 elif abs(centroid_pos[0]-last_pos[0]) > 1 :
                     last_pos = centroid_pos
 
-                print(ptz_presets)
+                #print(ptz_presets)
 
                 pan_hex, tilt_hex = get_pan_from_bev(last_pos[0], ptz_presets['192.168.33.101'])
                 move('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
@@ -530,6 +530,7 @@ def pano_process(
                 for p in move_processes:
                     p.join()
  """
+            ffmpeg_process.stdin.flush()
             time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
     except KeyboardInterrupt:
@@ -701,6 +702,8 @@ def main(args, config: Config) -> int:
     start_event = Event()
     stop_event = Event()
 
+    print('')
+
     proc_pano = Process(
         target=pano_process,
         args=(
@@ -756,7 +759,7 @@ if __name__ == "__main__":
     # multiprocessing.set_start_method("spawn")
 
     parser = argparse.ArgumentParser(prog="NDI Stream Recorder", description="Schedule a script to run based on time.")
-    parser.add_argument("--config", type=str, help="Config path.", required=False, default="./config.yaml")
+    parser.add_argument("--config", type=str, help="Config path.", required=False, default="./default_config.yaml")
     parser.add_argument("--start_time", type=str, required=False, default=None)
     parser.add_argument("--end_time", type=str, required=False, default=None)
     parser.add_argument("--duration", type=str, required=False, default=None)
