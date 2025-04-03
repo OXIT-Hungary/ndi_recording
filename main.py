@@ -234,10 +234,10 @@ def wait_until_position_reached(ip, dest_pan, dest_tilt, threshold=15):
 
         pan, tilt = ret
 
-        distance = math.sqrt((dest_pan - pan) ** 2 + (dest_tilt - tilt) ** 2)
+        distance = math.sqrt((dest_pan - pan) ** 2 )
 
         if distance <= threshold:
-            return pan, tilt  # Exit when within the threshold
+            return pan  # Exit when within the threshold
 
 
 def move(ip, pan_pos, tilt_pos, speed, wait_for_response: bool = False) -> None:
@@ -255,8 +255,34 @@ def move(ip, pan_pos, tilt_pos, speed, wait_for_response: bool = False) -> None:
 
     visca.send_command(ip=ip, command=command, wait_for_response=wait_for_response)
 
-
 def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
+    start_pan, _ = visca.get_camera_pan_tilt(ip)  # Ignore tilt position
+    pan_positions, start_pan = calculate_intermediate_positions(start_pan, pan_pos, steps)
+
+    current_pan = start_pan
+    for idx, next_pan in enumerate(pan_positions):
+        pan_speed = calculate_speeds(
+            pan_dist=abs(next_pan - current_pan),
+            tilt_dist=0,  # No tilt movement
+            idx_step=idx,
+            steps=len(pan_positions),
+            max_speed=max_speed,
+        )[0]  # Extract only pan speed
+
+        # Create VISCA absolute position command (only pan)
+        command = bytes([
+            0x81, 0x01, 0x06, 0x02,  # VISCA header
+            pan_speed, pan_speed,  # Pan speed, tilt speed set to 0
+            (next_pan >> 12) & 0x0F, (next_pan >> 8) & 0x0F, (next_pan >> 4) & 0x0F, next_pan & 0x0F,  # Pan position
+            (tilt_pos >> 12) & 0x0F, (tilt_pos >> 8) & 0x0F, (tilt_pos >> 4) & 0x0F, tilt_pos & 0x0F,
+            0xFF
+        ])
+
+        visca.send_command(ip=ip, command=command)
+        #current_pan = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=None)
+
+
+""" def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
 
     start_pan, start_tilt = visca.get_camera_pan_tilt(ip)
     pan_positions, start_pan = calculate_intermediate_positions(start_pan, pan_pos, steps)
@@ -284,7 +310,7 @@ def move_with_easing(ip, pan_pos, tilt_pos, steps, max_speed):
         # fmt: on
 
         visca.send_command(ip=ip, command=command)
-        current_pan, current_tilt = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=next_tilt)
+        current_pan, current_tilt = wait_until_position_reached(ip=ip, dest_pan=next_pan, dest_tilt=next_tilt) """
 
 
 def hex_to_signed_int(hex_value):  
@@ -325,15 +351,15 @@ def calc_pan_shift(bev_x_axis_line: int, x_axis_value: int, pan_distance: float)
     print(result_pan)
     return result_pan
 
-def get_pan_from_bev(x_axis_value):
+def get_pan_from_bev(x_axis_value, presets):
     #get the bev-x value (horizental coordinate). between -10 to 10 
 
     bev_x_axis_line = 20 #
     #x_axis_value = 7 + 10 #add +10 constantly 
 
-    pan_left_hexa = '0xff06' #configbol jonnek, pan left es right value of the presets
-    pan_right_hexa = '0x100f1'
-    tilt_hexa = '0xfe86' #egyelore ez nem valtozik
+    pan_left_hexa = hex(presets['presets']['left'][0]) #configbol jonnek, pan left es right value of the presets
+    pan_right_hexa = hex(presets['presets']['right'][0])
+    tilt_hexa = hex(presets['presets']['left'][1]) #egyelore ez nem valtozik
 
 
     pan_deg_left, tilt_deg = visca_to_euler(pan_left_hexa, tilt_hexa)
@@ -424,6 +450,8 @@ def pano_process(
     logger.info("Process Pano - Event Set!")
 
     ii = 0
+    dist_threshold = 20
+
     try:
         while not stop_event.is_set():
             start_time = time.time()
@@ -451,19 +479,34 @@ def pano_process(
             centroid_pos = bev.process_frame(frame, onnx_session, ii, True) if ret else print('No_Pano_Frame')
             ii = ii + 1
             centroid_pos = list(centroid_pos)
+
             if not None in centroid_pos and len(centroid_pos)!=0:
-                if centroid_pos[0] < -15:
-                    centroid_pos[0] = -15
-                elif centroid_pos[0] > 15: 
-                    centroid_pos[0] = 15
+                if centroid_pos[0] < -dist_threshold:
+                    centroid_pos[0] = -dist_threshold
+                elif centroid_pos[0] > dist_threshold: 
+                    centroid_pos[0] = dist_threshold
 
                 if len(last_pos) == 0:
                     last_pos = centroid_pos
                 elif abs(centroid_pos[0]-last_pos[0]) > 1 :
                     last_pos = centroid_pos
 
-                pan_hex, tilt_hex = get_pan_from_bev(last_pos[0])
+                print(ptz_presets)
+
+                pan_hex, tilt_hex = get_pan_from_bev(last_pos[0], ptz_presets['192.168.33.101'])
                 move('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
+
+                pan_hex, tilt_hex = get_pan_from_bev(-last_pos[0], ptz_presets['192.168.33.102'])
+                move('192.168.33.102', int(pan_hex, 16), int(tilt_hex, 16), 0x1)
+                #move_with_easing('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 10, 0x10)
+
+                """ move_processes = []
+                p = Process(target=move_with_easing, args=('192.168.33.101', int(pan_hex, 16), int(tilt_hex, 16), 50, 0x5))
+                p.start()
+                move_processes.append(p)
+
+                for p in move_processes:
+                    p.join() """
 
             """ most_populated_bucket = process_buckets(
                 boxes=boxes,
@@ -471,11 +514,11 @@ def pano_process(
                 scores=scores,
                 bucket_width=bucket_width,
             )
-            mode = update_frequency(window, freq_counter, most_populated_bucket)
+            mode = update_frequency(window, freq_counter, most_populated_bucket) """
 
             # draw(Image.fromarray(frame), labels, boxes, scores, mode, bucket_width)
 
-            if position != mode:
+            """ if position != mode:
                 position = mode
                 move_processes = []
                 for ip, preset in ptz_presets.items():
@@ -485,8 +528,8 @@ def pano_process(
                     move_processes.append(p)
 
                 for p in move_processes:
-                    p.join() """
-
+                    p.join()
+ """
             time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
     except KeyboardInterrupt:

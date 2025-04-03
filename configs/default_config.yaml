@@ -34,8 +34,8 @@ camera_system:
       enable: True
       ip: 169.254.108.83
       # src: rtsp
-      src: rtsp://192.168.33.103:554/media2/stream.sdp?profile=Profile200
-      # src: /home/geri/Desktop/pano_cut.mp4
+      #src: rtsp://192.168.33.103:554/media2/stream.sdp?profile=Profile200
+      src: /home/bvsc-oxit/Documents/BACKUP/Only_For_Testing/ndi_recording/dataset/input/cropped_3.mp4
       frame_size: [4416, 1600]
       crop: [530, 850, 1120, 3660] # (top_y, top_x, bottom_y, bottom_x)
       fps: 15

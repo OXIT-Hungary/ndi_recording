@@ -69,9 +69,10 @@ class BEV():
         
         #outlier filtering
         idx_list = []
+        _dist_threshold = 12.5
         if players_in_bev is not None:
             for k in range(len(players_in_bev)):
-                if players_in_bev[k][0] < -10 or players_in_bev[k][0] > 10 or players_in_bev[k][1] < -10 or players_in_bev[k][1] > 10 :
+                if players_in_bev[k][0] < -_dist_threshold or players_in_bev[k][0] > _dist_threshold or players_in_bev[k][1] < -_dist_threshold or players_in_bev[k][1] > _dist_threshold:
                     idx_list.append(k)
             players_in_bev = np.delete(players_in_bev, idx_list, axis=0)
 
