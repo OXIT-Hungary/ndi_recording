@@ -16,3 +16,8 @@ pydantic-settings
 protobuf
 dotenv
 jinja2
+scipy
+open3d
+matplotlib
+imageio
+filterpy

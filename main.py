@@ -688,7 +688,6 @@ def start_cam(ip, preset) -> None:
 
 
 def main(config: Config, stream) -> int:
-
     bev = BEV(config)
 
     processes = []
@@ -696,28 +695,35 @@ def main(config: Config, stream) -> int:
         p = Process(target=start_cam, args=(cfg.ip, cfg.presets['center']))
         p.start()
         processes.append(p)
+    print(processes)
 
     for proc in processes:
         proc.join()
+    print("1")
 
     if not ndi.initialize():
         logger.error("Failed to initialize NDI.")
         return 1
+    print("2")
 
     ndi_find = ndi.find_create_v2()
     if ndi_find is None:
         logger.error("Failed to create NDI find instance.")
         return 1
+    print("3")
 
     sources = []
     while len(sources) < 2:
-        logger.info("Looking for sources ...")
+        print("4")
+        # logger.info("Looking for sources ...")
         ndi.find_wait_for_sources(ndi_find, 5000)
         sources = ndi.find_get_current_sources(ndi_find)
+    print(sources)
 
     presets = {
         cfg.ip: {'presets': cfg.presets, 'speed': cfg.speed} for cfg in config.camera_system.ptz_cameras.values()
     }
+    print(stream["stream_key"])
 
     youtube_stream = YouTubeStream(token=stream["stream_key"])
     youtube_stream.start()
@@ -771,10 +777,10 @@ def main(config: Config, stream) -> int:
 
         proc_pano.kill()
 
-    logger.info("Finished recording.")
+    #logger.info("Finished recording.")
     """ for cfg in config.camera_system.ptz_cameras.values():
         visca.power_off(cfg.ip) """
-
+    print("finished")
     return 0
 
 

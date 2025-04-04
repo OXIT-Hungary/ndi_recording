@@ -1,5 +1,6 @@
 import os
 import pickle
+import time
 from datetime import datetime, timezone, timedelta
 
 from googleapiclient.discovery import build
@@ -275,8 +276,11 @@ class YoutubeService:
 
         try:
             stream_id = self.create_live_stream(stream_details)
+            time.sleep(2)
             broadcast_id = self.create_live_broadcast(stream_details, stream_id)
+            time.sleep(2)
             self.start_live_broadcast(broadcast_id)
+            time.sleep(2)
 
             # Retrieve and return stream details
             stream_info = self.get_stream_details(broadcast_id)

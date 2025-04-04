@@ -68,6 +68,7 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
 
         new_stream = youtube_service.create_scheduled_stream(stream_details)
 
+        print(new_stream)
         cfg = load_config(file_path='./default_config.yaml')
         cfg.court_width = 25
         cfg.court_height = 20
