@@ -8,30 +8,39 @@ from src.config import PTZConfig
 from src.camera.camera import Camera
 import math
 import time
+import subprocess
+import multiprocessing
 
 NUM2PRESET = {0: 'left', 1: 'center', 2: 'right'}
 PRESET2NUM = {'left': 0, 'center': 1, 'right': 2}
 
 
-class PTZCamera(Camera, threading.Thread):
+class PTZCamera(Camera, multiprocessing.Process):
     """PTZ Camera class."""
 
     PAN_SPEEDS = None
     TILT_SPEEDS = None
 
-    def __init__(self, config: PTZConfig, src, queue) -> None:
-        Camera.__init__(self, queue=queue)
-        threading.Thread.__init__(self)
+    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path) -> None:
+        Camera.__init__(self, event_stop=event_stop)
+        multiprocessing.Process.__init__(self)
 
+        self.name = name
         self.config = config
-        self.receiver = self._create_receiver(src=src)
+        self.out_path = out_path
+        self.receiver = None
 
         self.ip = config.ip
         self.presets = config.presets
-
         self.sleep_time = 1 / config.fps
+        self.thread_move = None
 
-    def _create_receiver(self, src):
+        self.ffmpeg = None
+
+    def _create_receiver(self):
+
+        sources = self._init_ndi()
+        src = next((s for s in sources if self.ip in s.url_address), None)
 
         ndi_recv_create = ndi.RecvCreateV3()
         ndi_recv_create.color_format = ndi.RECV_COLOR_FORMAT_BGRX_BGRA
@@ -42,23 +51,66 @@ class PTZCamera(Camera, threading.Thread):
 
         return receiver
 
+    def _init_ndi(self) -> list:
+        if not ndi.initialize():
+            logger.error("Failed to initialize NDI.")
+            return 1
+
+        self._ndi_find = ndi.find_create_v2()
+        if self._ndi_find is None:
+            logger.error("Failed to create NDI find instance.")
+            return 1
+
+        sources = []
+        while len(sources) < 2:
+            # logger.info("Looking for sources ...")
+            ndi.find_wait_for_sources(self._ndi_find, 5000)
+            sources = ndi.find_get_current_sources(self._ndi_find)
+
+        return sources
+
     def run(self) -> None:
-        self.running = True
-        while self.running:
-            start_time = time.time()
-            self.queue.put(self.get_frame())
-            time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
+        try:
+            self.receiver = self._create_receiver()
+            # fmt: off
+            self.ffmpeg = subprocess.Popen(
+                    [
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel", "info",
+                        "-f", "rawvideo",
+                        "-pix_fmt", "bgr24",
+                        "-s", "1920x1080",
+                        "-r", str(self.config.fps),
+                        "-hwaccel", "cuda",
+                        "-hwaccel_output_format", "cuda",
+                        "-i", "pipe:",
+                        "-c:v", self.config.codec,
+                        "-pix_fmt", "yuv420p",
+                        "-b:v", f"{self.config.bitrate}k",
+                        "-preset", "fast",
+                        "-profile:v", "high",
+                        os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.mp4"),
+                    ],
+                    stdin=subprocess.PIPE,
+                )
+            # fmt: on
 
-    def power_on(self) -> None:
-        """Powers on camera with VISCA command."""
+            while not self.event_stop.is_set():
+                start_time = time.time()
+                frame = self.get_frame()
+                if frame is not None:
+                    self.ffmpeg.stdin.write(frame.tobytes())
+                    self.ffmpeg.stdin.flush()
 
-        visca.power_on(self.ip)
-        self.move_to_preset(preset='center', speed=0x14)
+                time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
+        except Exception as e:
+            print(f"PTZ Camera: {e}")
 
-    def power_off(self) -> None:
-        """Powers off camera with VISCA command."""
-
-        visca.power_off(self.ip)
+        finally:
+            if self.ffmpeg:
+                self.ffmpeg.stdin.flush()
+                self.ffmpeg.stdin.close()
 
     def get_frame(self) -> np.ndarray | None:
         """
@@ -77,6 +129,17 @@ class PTZCamera(Camera, threading.Thread):
             ndi.recv_free_video_v2(self.receiver, v)
 
         return frame
+
+    def power_on(self) -> None:
+        """Powers on camera with VISCA command."""
+
+        visca.power_on(self.ip)
+        self.move_to_preset(preset='center', speed=0x14)
+
+    def power_off(self) -> None:
+        """Powers off camera with VISCA command."""
+
+        visca.power_off(self.ip)
 
     def move_to_preset(self, preset: str, speed: int, easing: bool = False, wait: bool = False) -> None:
         """
@@ -319,5 +382,5 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, config, src, queue):
-        super().__init__(config, src, queue)
+    def __init__(self, name, config, event_stop, out_path):
+        super().__init__(name, config, event_stop, out_path)

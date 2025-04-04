@@ -8,7 +8,36 @@ class YouTubeStream:
         self.ffmpeg = None
 
     def start(self) -> None:
-        pass
+        # fmt: off
+        self.ffmpeg = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-f", "rawvideo",
+                "-pix_fmt", "bgr24",
+                "-s", "1920x1080",
+                "-r", "30",
+                "-i", "-",
+                "-f", "lavfi",
+                "-i", "anullsrc",  # Silent audio
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-tune", "zerolatency",
+                "-b:v", "3000k",
+                "-bufsize", "6000k",
+                "-pix_fmt", "yuv420p",
+                "-g", "60",
+                "-keyint_min", "30",
+                "-crf", "25",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-ar", "44100",
+                "-f", "flv",
+                f"rtmp://a.rtmp.youtube.com/live2/{self.token}"
+            ],
+            stdin=subprocess.PIPE,
+        )
+        # fmt: on
 
     def stop(self) -> None:
-        pass
+        self.ffmpeg.stdin.close()
+        self.ffmpeg.wait()

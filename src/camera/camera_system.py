@@ -10,42 +10,45 @@ import time
 import onnxruntime
 from collections import Counter, deque
 import multiprocessing
+import queue
 
 
 class CameraSystem:
     """Camera System Class which incorporates and handles PTZ and Panorama cameras."""
 
-    def __init__(self, config: CameraSystemConfig) -> None:
+    def __init__(self, config: CameraSystemConfig, out_path: str) -> None:
         self.config = config
 
-        self.queues = {}
+        self.manager = multiprocessing.Manager()
+        self.event_stop = self.manager.Event()
+        self.pano_queue = self.manager.Queue(maxsize=5)
+
         self.cameras = {}
 
         if config.pano_camera.enable:
-            self.queues['pano'] = multiprocessing.Queue(maxsize=10)
-            self.cameras['pano'] = PanoCamrera(config=config.pano_camera, queue=self.queues['pano'])
+            self.cameras['pano'] = PanoCamrera(
+                config=config.pano_camera,
+                queue=self.pano_queue,
+                event_stop=self.event_stop,
+                save=True,
+                out_path=out_path,
+            )
 
         if any([cfg.enable for cfg in config.ptz_cameras.values()]):
-            sources = self._init_ndi()
-
             for name, cfg in config.ptz_cameras.items():
-                src = next((s for s in sources if cfg.ip in s.url_address), None)
-                self.queues[name] = multiprocessing.Queue(maxsize=10)
-
                 if hasattr(ptz_camera, cfg.name):
                     cls = getattr(ptz_camera, cfg.name)
-                    self.cameras[name] = cls(config=cfg, src=src, queue=self.queues[name])
+                    self.cameras[name] = cls(name=name, config=cfg, event_stop=self.event_stop, out_path=out_path)
                 else:
                     raise ValueError(f"Class '{cfg.name}' not found in PTZCamera.py.")
 
         self.position = 1
-        self._stop = False
         self.thread_detect_and_track = None
 
+        # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
         self.onnx_session = onnxruntime.InferenceSession(
             config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
-        # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
 
     def _init_ndi(self) -> list:
         if not ndi.initialize():
@@ -71,20 +74,19 @@ class CameraSystem:
         for camera in self.cameras.values():
             camera.start()
 
-        """ if 'pano' in self.cameras:
-            self.thread_detect_and_track = threading.Thread(target=self._detect_and_track, args=())
-            self.thread_detect_and_track.start()
-        else:
-            raise RuntimeError("No Panorama Camera.") """
+        # if 'pano' in self.cameras:
+        #     self.thread_detect_and_track = threading.Thread(target=self._detect_and_track, args=())
+        #     self.thread_detect_and_track.start()
+        # else:
+        #     raise RuntimeError("No Panorama Camera.")
 
     def stop(self) -> None:
-        self._stop = True
+        self.event_stop.set()
 
         for cam in self.cameras.values():
-            cam.stop()
-            cam.join()
+            cam.join(timeout=5)
 
-        self.thread_detect_and_track.join()
+        # self.thread_detect_and_track.join()
 
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 10  # 10 fps
@@ -93,10 +95,13 @@ class CameraSystem:
         freq_counter = Counter()
 
         try:
-            while not self._stop:
+            while not self.event_stop.is_set():
                 start_time = time.time()
 
-                #frame = self.cameras['pano'].get_frame()
+                try:
+                    frame = self.queues['pano'].get(block=False)
+                except queue.Empty:
+                    continue
 
                 labels, boxes, scores = self.onnx_session.run(
                     output_names=None,
@@ -160,7 +165,9 @@ class CameraSystem:
         return np.expand_dims(np.transpose(frame, (2, 0, 1)), axis=0)
 
     def __del__(self) -> None:
-        ndi.find_destroy(self._ndi_find)
+        # if any([cfg.enable for cfg in self.config.ptz_cameras.values()]):
+        #     ndi.find_destroy(self._ndi_find)
+        pass
 
 
 class CameraSystemManager:

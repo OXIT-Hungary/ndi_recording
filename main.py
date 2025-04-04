@@ -6,6 +6,7 @@ import psutil
 import os
 import subprocess
 from pathlib import Path
+import queue
 
 from src.camera.camera_system import CameraSystem
 
@@ -56,14 +57,6 @@ def count_thread(config, event_stop: multiprocessing.Event) -> None:
         event_stop.set()
 
 
-def secondary_proc(config, queue_frame, event_stop) -> None:
-    thread_count = threading.Thread(target=count_thread, args=(config.schedule, event_stop))
-    thread_count.start()
-
-    thread_count.join()
-    # thread_pano.join()
-
-
 class WriterProcess(multiprocessing.Process):
     def __init__(
         self, config, out_path: str, event_stop: multiprocessing.Event, queues: dict[str, multiprocessing.Queue]
@@ -76,7 +69,7 @@ class WriterProcess(multiprocessing.Process):
 
         self.writers = {}
 
-        for name, cfg in config.ptz_cameras.items():
+        for name, cfg in [(name, cfg) for name, cfg in config.ptz_cameras.items() if cfg.enable]:
             # fmt: off
             self.writers[name] = subprocess.Popen(
                     [
@@ -101,52 +94,55 @@ class WriterProcess(multiprocessing.Process):
                 )
             # fmt: on
 
-        # fmt: off
-        self.writers["pano"] = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel", "error",
-                "-fflags", "genpts+discardcorrupt",
-                "-use_wallclock_as_timestamps", "1",  # Use real timestamps
-                "-vsync", "0",  # Avoid frame duplication/removal
-                "-f", "rawvideo",
-                "-pix_fmt", "bgr24",
-                "-s", f"{config.pano_camera.crop[3] - config.pano_camera.crop[1]}x{config.pano_camera.crop[2] - config.pano_camera.crop[0]}",
-                "-r", str(config.pano_camera.fps),
-                "-hwaccel", "cuda",
-                "-i", "pipe:",
-                "-c:v", "h264_nvenc",
-                "-pix_fmt", "yuv420p",
-                "-b:v", "2M",
-                "-preset", "fast",
-                "-profile:v","high",
-                "-avoid_negative_ts", "make_zero",
-                "-muxdelay", "0",
-                str(os.path.join(out_path, f"{Path(out_path).stem}_pano.mp4")),
-            ],
-            stdin=subprocess.PIPE,
-        )
-        # fmt: on
+        # # fmt: off
+        # self.writers["pano"] = subprocess.Popen(
+        #     [
+        #         "ffmpeg",
+        #         "-hide_banner",
+        #         "-loglevel", "error",
+        #         "-fflags", "genpts+discardcorrupt",
+        #         "-use_wallclock_as_timestamps", "1",  # Use real timestamps
+        #         "-vsync", "0",  # Avoid frame duplication/removal
+        #         "-f", "rawvideo",
+        #         "-pix_fmt", "bgr24",
+        #         "-s", f"{config.pano_camera.crop[3] - config.pano_camera.crop[1]}x{config.pano_camera.crop[2] - config.pano_camera.crop[0]}",
+        #         "-r", str(config.pano_camera.fps),
+        #         "-hwaccel", "cuda",
+        #         "-i", "pipe:",
+        #         "-c:v", "h264_nvenc",
+        #         "-pix_fmt", "yuv420p",
+        #         "-b:v", "2M",
+        #         "-preset", "fast",
+        #         "-profile:v","high",
+        #         "-avoid_negative_ts", "make_zero",
+        #         "-muxdelay", "0",
+        #         str(os.path.join(out_path, f"{Path(out_path).stem}_pano.mp4")),
+        #     ],
+        #     stdin=subprocess.PIPE,
+        # )
+        # # fmt: on
 
     def run(self) -> None:
         try:
             while not self.event_stop.is_set():
-
-                for cam, queue in self.queues.items():
-                    frame = queue.get()
-                    if frame is not None:
-                        try:
+                for cam, q in self.queues.items():
+                    if cam == 'pano':
+                        continue
+                    try:
+                        frame = q.get(block=False)
+                        if frame is not None:
                             self.writers[cam].stdin.write(frame.tobytes())
                             self.writers[cam].stdin.flush()
-                        except BrokenPipeError as e:
-                            logger.error("Broken pipe error while writing frame: %s", e)
-                            break
-                        except Exception as e:
-                            logger.error("Writer Error: %s", e)
-                            break
-                    else:
-                        logger.warning("No video frame captured")
+                    except queue.Empty:
+                        pass
+                        # print('queue empty')
+                    except BrokenPipeError as e:
+                        logger.error("Broken pipe error while writing frame: %s", e)
+                        break
+                    except Exception as e:
+                        logger.error("Writer Error: %s", e)
+                        break
+
         except KeyboardInterrupt:
             pass
 
@@ -161,23 +157,16 @@ class WriterProcess(multiprocessing.Process):
                 writer.stdin.close()
 
 
-def main(config: Config) -> int:
+def main(config: Config):
 
-    camera_system = CameraSystem(config=config.camera_system)
+    camera_system = CameraSystem(config=config.camera_system, out_path=config.out_path)
+    time.sleep(1)
     camera_system.start()
 
-    event_stop = multiprocessing.Event()
-    writer = WriterProcess(
-        config=config.camera_system, out_path=config.out_path, event_stop=event_stop, queues=camera_system.queues
-    )
-
-    writer.start()
-    
-    time.sleep(10)
+    time.sleep(60)
+    print('ASD')
     camera_system.stop()
-    event_stop.set()
-
-    writer.join()
+    print('ASD2')
 
     # proc_second = multiprocessing.Process(target=secondary_proc, args=(config, queue_frame, event_stop))
     # proc_second.start()
@@ -188,7 +177,7 @@ def main(config: Config) -> int:
 if __name__ == "__main__":
     import argparse
 
-    # multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("spawn")
 
     parser = argparse.ArgumentParser(prog="NDI Stream Recorder", description="Schedule a script to run based on time.")
     parser.add_argument("--config", type=str, help="Config path.", required=False, default="./config.yaml")
