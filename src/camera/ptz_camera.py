@@ -1,15 +1,17 @@
+import math
+import multiprocessing
 import os
+import subprocess
+import threading
+import time
 from pathlib import Path
+
 import NDIlib as ndi
 import numpy as np
-import threading
+
 import src.camera.visca as visca
-from src.config import PTZConfig
 from src.camera.camera import Camera
-import math
-import time
-import subprocess
-import multiprocessing
+from src.config import PTZConfig
 
 NUM2PRESET = {0: 'left', 1: 'center', 2: 'right'}
 PRESET2NUM = {'left': 0, 'center': 1, 'right': 2}

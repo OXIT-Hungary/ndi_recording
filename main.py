@@ -1,18 +1,15 @@
+import multiprocessing
+import os
+import queue
+import subprocess
 import time
 from datetime import datetime
-import threading
-import multiprocessing
-import psutil
-import os
-import subprocess
 from pathlib import Path
-import queue
 
-from src.camera.camera_system import CameraSystem
-
-
+import psutil
 from tqdm import tqdm
 
+from src.camera.camera_system import CameraSystem
 from src.config import Config, load_config
 from src.utils.logger import setup_logger
 

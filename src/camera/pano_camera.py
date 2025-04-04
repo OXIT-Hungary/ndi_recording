@@ -1,11 +1,13 @@
-from src.config import PanoramaConfig
-from src.camera.camera import Camera
-import subprocess
-import numpy as np
 import multiprocessing
-import time
 import os
+import subprocess
+import time
 from pathlib import Path
+
+import numpy as np
+
+from src.camera.camera import Camera
+from src.config import PanoramaConfig
 
 
 class PanoCamrera(Camera, multiprocessing.Process):

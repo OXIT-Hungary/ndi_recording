@@ -1,16 +1,17 @@
-from src.config import CameraSystemConfig
-from src.camera.pano_camera import PanoCamrera
-import src.camera.ptz_camera as ptz_camera
-
-import numpy as np
-import cv2
-import NDIlib as ndi
-import threading
-import time
-import onnxruntime
-from collections import Counter, deque
 import multiprocessing
 import queue
+import threading
+import time
+from collections import Counter, deque
+
+import cv2
+import NDIlib as ndi
+import numpy as np
+import onnxruntime
+
+import src.camera.ptz_camera as ptz_camera
+from src.camera.pano_camera import PanoCamrera
+from src.config import CameraSystemConfig
 
 
 class CameraSystem:
@@ -74,11 +75,11 @@ class CameraSystem:
         for camera in self.cameras.values():
             camera.start()
 
-        # if 'pano' in self.cameras:
-        #     self.thread_detect_and_track = threading.Thread(target=self._detect_and_track, args=())
-        #     self.thread_detect_and_track.start()
-        # else:
-        #     raise RuntimeError("No Panorama Camera.")
+        if 'pano' in self.cameras:
+            self.thread_detect_and_track = threading.Thread(target=self._detect_and_track, args=())
+            self.thread_detect_and_track.start()
+        else:
+            raise RuntimeError("No Panorama Camera.")
 
     def stop(self) -> None:
         self.event_stop.set()
@@ -99,7 +100,7 @@ class CameraSystem:
                 start_time = time.time()
 
                 try:
-                    frame = self.queues['pano'].get(block=False)
+                    frame = self.pano_queue.get(block=False)
                 except queue.Empty:
                     continue
 
@@ -110,7 +111,7 @@ class CameraSystem:
                         "orig_target_sizes": np.expand_dims(frame.shape[:2][::-1], axis=0),
                     },
                 )
-
+                print(labels, boxes, scores)
                 most_populated_bucket = self._process_buckets(
                     boxes=boxes,
                     labels=labels,
@@ -120,6 +121,7 @@ class CameraSystem:
                 mode = self._update_frequency(window, freq_counter, most_populated_bucket)
 
                 if self.position != mode:
+                    print('Move')
                     self.position = mode
 
                     for camera in [cam for name, cam in self.cameras.items() if 'ptz' in name]:
@@ -165,8 +167,6 @@ class CameraSystem:
         return np.expand_dims(np.transpose(frame, (2, 0, 1)), axis=0)
 
     def __del__(self) -> None:
-        # if any([cfg.enable for cfg in self.config.ptz_cameras.values()]):
-        #     ndi.find_destroy(self._ndi_find)
         pass
 
 
