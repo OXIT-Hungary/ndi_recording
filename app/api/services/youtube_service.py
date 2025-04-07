@@ -1,6 +1,5 @@
 import os
 import pickle
-import time
 from datetime import datetime, timezone, timedelta
 
 from googleapiclient.discovery import build
@@ -89,6 +88,17 @@ class YoutubeService:
         except Exception as e:
             print(f"Error handling OAuth callback: {e}")
 
+    def clear_credentials(self):
+        try:
+            if os.path.exists(settings.TOKEN_FILE_PATH):
+                os.remove(settings.TOKEN_FILE_PATH)
+            self.credentials = None
+            self.youtube = None
+            return True
+        except Exception as e:
+            print(f"Error clearing credentials: {e}")
+            raise ValueError(f"Failed to clear credentials: {e}")
+
     def is_authenticated(self):
         if self.credentials is not None and self.youtube is not None:
             return True
@@ -171,7 +181,11 @@ class YoutubeService:
                     },
                     "contentDetails": {
                         "enableAutoStart": True,
+                        "enableAutoStop": True,
                         "isReusable": True
+                    },
+                    "status": {
+                        "streamStatus": "ready"
                     }
                 }
             )
@@ -183,7 +197,7 @@ class YoutubeService:
             print(f"Error creating live stream: {e}")
             raise
 
-    def create_live_broadcast(self,stream_details: YoutubeStreamSchedule, stream_id: str):
+    def create_live_broadcast(self, stream_details: YoutubeStreamSchedule, stream_id: str):
         request = self.youtube.liveBroadcasts().insert(
             part="snippet,status,contentDetails",
             body={
@@ -199,7 +213,12 @@ class YoutubeService:
                     "publishAt": None
                 },
                 "contentDetails": {
-                    "enableAutoStart": True
+                    "enableAutoStart": True,
+                    "enableAutoEnd": True,
+                    "enableDvr": True,
+                    "enableEmbed": True,
+                    "recordFromStart": True,
+                    "startWithSlate": False
                 }
             }
         )
@@ -227,7 +246,6 @@ class YoutubeService:
             }
         )
         response = request.execute()
-        # print(f"TOKEN: {request['http']['credentials']['token']}")
         return response["id"]
 
     def get_stream_details(self, broadcast_id: str):
@@ -275,16 +293,34 @@ class YoutubeService:
             raise ValueError("Not authenticated with YouTube API")
 
         try:
+            # Convert timestamps to UTC if they aren't already
+            if stream_details.start_time.tzinfo is None:
+                stream_details.start_time = stream_details.start_time.replace(tzinfo=timezone.utc)
+            if stream_details.end_time.tzinfo is None:
+                stream_details.end_time = stream_details.end_time.replace(tzinfo=timezone.utc)
+
+            # Validate that end time is after start time
+            if stream_details.end_time <= stream_details.start_time:
+                raise ValueError("End time must be after start time")
+
             stream_id = self.create_live_stream(stream_details)
-            time.sleep(2)
             broadcast_id = self.create_live_broadcast(stream_details, stream_id)
-            time.sleep(2)
-            self.start_live_broadcast(broadcast_id)
-            time.sleep(2)
+
+            # Remove the transition call completely
+            # When creating a scheduled broadcast, we should not try to
+            # manually transition states - YouTube will handle this based on the schedule
 
             # Retrieve and return stream details
             stream_info = self.get_stream_details(broadcast_id)
-            print("Successfully started stream")
+            print(f"Successfully scheduled stream to start at {stream_details.start_time}"
+                  f" and end at {stream_details.end_time}")
+
+            # Add scheduling info to the return data
+            stream_info["scheduled_start"] = stream_details.start_time.isoformat()
+            stream_info["scheduled_end"] = stream_details.end_time.isoformat()
+            stream_info["auto_start_enabled"] = True
+            stream_info["auto_end_enabled"] = True
+
             return stream_info
 
         except Exception as e:
