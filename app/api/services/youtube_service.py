@@ -88,6 +88,17 @@ class YoutubeService:
         except Exception as e:
             print(f"Error handling OAuth callback: {e}")
 
+    def clear_credentials(self):
+        try:
+            if os.path.exists(settings.TOKEN_FILE_PATH):
+                os.remove(settings.TOKEN_FILE_PATH)
+            self.credentials = None
+            self.youtube = None
+            return True
+        except Exception as e:
+            print(f"Error clearing credentials: {e}")
+            raise ValueError(f"Failed to clear credentials: {e}")
+
     def is_authenticated(self):
         if self.credentials is not None and self.youtube is not None:
             return True

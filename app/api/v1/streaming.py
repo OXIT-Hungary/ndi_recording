@@ -58,6 +58,16 @@ def auth_callback(request: Request, code: str = Query(None), error: str = Query(
         )
 
 
+@youtube_router.get("/logout")
+def logout():
+    try:
+        youtube_service.clear_credentials()
+        return RedirectResponse(url="/?message=Successfully logged out")
+    except Exception as e:
+        error_message = f"Error during logging out: {e}"
+        return RedirectResponse(url=f"/?error={error_message}")
+
+
 @youtube_router.get("/streams", response_class=HTMLResponse)
 def get_scheduled_streams(request: Request):
     try:

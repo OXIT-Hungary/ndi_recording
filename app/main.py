@@ -26,8 +26,7 @@ app.include_router(api_router)
 
 
 @app.get("/", response_class=HTMLResponse)
-def root(request: Request, error: str = None):
-    # Check authentication status
+def root(request: Request, error: str = None, message: str = None):
     is_authenticated = youtube_service.is_authenticated()
 
     return templates.TemplateResponse(
@@ -35,6 +34,7 @@ def root(request: Request, error: str = None):
         {
             "request": request,
             "is_authenticated": is_authenticated,
-            "error_message": error
+            "error_message": error,
+            "message": message
         }
     )
