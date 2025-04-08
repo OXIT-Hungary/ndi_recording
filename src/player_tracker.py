@@ -1,7 +1,7 @@
 import numpy as np
 from filterpy.kalman import KalmanFilter
-from scipy.spatial import distance
 from scipy.optimize import linear_sum_assignment
+from scipy.spatial import distance
 
 
 class Track:

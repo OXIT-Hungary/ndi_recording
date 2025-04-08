@@ -1,9 +1,8 @@
 import cv2
-import numpy as np
-from PIL import Image, ImageDraw
-
 import matplotlib.pyplot as plt
+import numpy as np
 import numpy.typing as npt
+from PIL import Image, ImageDraw
 
 class2color = {1: (255, 0, 0), 2: (0, 255, 0), 3: (255, 255, 0)}
 class2str = {1: 'Goalkeeper', 2: 'Player', 3: 'Referee'}

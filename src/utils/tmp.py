@@ -1,6 +1,7 @@
-from sklearn.cluster import DBSCAN
 from collections import defaultdict
+
 import numpy as np
+from sklearn.cluster import DBSCAN
 
 
 def hex_to_signed_int(hex_value):

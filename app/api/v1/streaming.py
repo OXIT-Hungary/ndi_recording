@@ -1,12 +1,12 @@
+import datetime
+
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+import main
 from app.api.services.youtube_service import youtube_service
 from app.schemas.youtube_stream import YoutubeStreamSchedule
-
-import main
-import datetime
 from src.config import load_config
 
 templates = Jinja2Templates(directory="app/templates/streaming")

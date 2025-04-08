@@ -9,9 +9,9 @@ import numpy as np
 import onnxruntime
 
 import src.camera.ptz_camera as ptz_camera
+from src.bev import BEV
 from src.camera.pano_camera import PanoCamrera
 from src.config import CameraSystemConfig
-from src.bev import BEV
 from src.player_tracker import Tracker
 from src.utils.tmp import get_cluster_centroid
 
