@@ -145,9 +145,10 @@ class YoutubeService:
 
                 if is_status_active or is_time_active:
                     # Format times: add 1 hour and remove Z
-                    formatted_start = (start_time + timedelta(hours=1)).strftime(
+                    formatted_start = (start_time + timedelta(hours=2)).strftime(
                         "%Y-%m-%d %H:%M") if start_time else None
-                    formatted_end = (end_time + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M") if end_time else None
+                    formatted_end = (end_time + timedelta(hours=2)).strftime(
+                        "%Y-%m-%d %H:%M") if end_time else None
 
                     stream = {
                         "stream_id": broadcast["id"],
