@@ -1,7 +1,7 @@
 import socket
 
 VISCA_PORT = 52381
-ip = "192.168.33.101"
+ip = "192.168.33.102"
 
 
 def get_camera_pan_tilt(ip):
@@ -43,4 +43,29 @@ def send_inquiry(ip, command, timeout: float = 10.0):
             raise Exception(f"Error: {e}") from e
 
 
+def hex_to_signed_int(hex_value):
+    """Converts a 16-bit hexadecimal VISCA value to a signed integer."""
+    int_value = int(hex_value, 16)
+    if int_value > 0x7FFF:  # Handle two’s complement negative values
+        int_value -= 0x10000
+    return int_value
+
+
+def visca_to_euler(hex_pan, hex_tilt):
+    """
+    Converts VISCA hexadecimal pan-tilt values to Euler degrees.
+    """
+    pan_int = hex_to_signed_int(hex_pan)
+    tilt_int = hex_to_signed_int(hex_tilt)
+
+    pan_deg = pan_int / 16.0
+    tilt_deg = tilt_int / 16.0
+
+    return pan_deg, tilt_deg
+
+
 print(get_camera_pan_tilt(ip))
+
+p, t = get_camera_pan_tilt(ip)
+pan_deg, tilt_deg = visca_to_euler(p, t)
+print(f"Pan: {pan_deg}°, Tilt: {tilt_deg}°")

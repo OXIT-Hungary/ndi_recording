@@ -5,6 +5,10 @@ from fastapi.templating import Jinja2Templates
 from app.api.services.youtube_service import youtube_service
 from app.schemas.youtube_stream import YoutubeStreamSchedule
 
+import main
+import datetime
+from src.config import load_config
+
 templates = Jinja2Templates(directory="app/templates/streaming")
 
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
@@ -63,6 +67,12 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
             return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
 
         new_stream = youtube_service.create_scheduled_stream(stream_details)
+
+        cfg = load_config(file_path='./default_config.yaml')
+        cfg.court_width = 25
+        cfg.court_height = 20
+        main.main(config=cfg, stream=new_stream)
+
         print(new_stream)
     except Exception as e:
         error_message = f"Error creating stream: {str(e)}"

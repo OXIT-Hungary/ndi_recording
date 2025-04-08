@@ -156,3 +156,10 @@ urllib3==2.3.0
     # via requests
 uvicorn==0.34.0
     # via -r requirements/prod.in
+
+scipy
+open3d
+matplotlib
+imageio
+filterpy
+

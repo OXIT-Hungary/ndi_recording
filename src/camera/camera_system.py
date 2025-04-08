@@ -2,7 +2,6 @@ import multiprocessing
 import queue
 import threading
 import time
-from collections import Counter, deque
 
 import cv2
 import NDIlib as ndi
@@ -12,6 +11,9 @@ import onnxruntime
 import src.camera.ptz_camera as ptz_camera
 from src.camera.pano_camera import PanoCamrera
 from src.config import CameraSystemConfig
+from src.bev import BEV
+from src.player_tracker import Tracker
+from src.utils.tmp import get_cluster_centroid
 
 
 class CameraSystem:
@@ -19,10 +21,17 @@ class CameraSystem:
 
     def __init__(self, config: CameraSystemConfig, out_path: str) -> None:
         self.config = config
+        self.out_path = out_path
 
         self.manager = multiprocessing.Manager()
         self.event_stop = self.manager.Event()
         self.pano_queue = self.manager.Queue(maxsize=5)
+
+        self.bev = BEV(config)
+
+        # self.tracker = Tracker(max_age=25, min_hits=3)  # TODO: Refactor and implement bev tracking
+
+        self.centroid = None
 
         self.cameras = {}
 
@@ -91,9 +100,7 @@ class CameraSystem:
 
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 10  # 10 fps
-
-        window = deque()
-        freq_counter = Counter()
+        dist_threshold = 20
 
         try:
             while not self.event_stop.is_set():
@@ -111,21 +118,30 @@ class CameraSystem:
                         "orig_target_sizes": np.expand_dims(frame.shape[:2][::-1], axis=0),
                     },
                 )
-                print(labels, boxes, scores)
-                most_populated_bucket = self._process_buckets(
-                    boxes=boxes,
-                    labels=labels,
-                    scores=scores,
-                    bucket_width=frame.shape[1] // 3,
+
+                proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
+                proj_players = proj_boxes[(labels == 2) & (scores > 0.6)]
+
+                gravity_center = get_cluster_centroid(proj_players)
+                new_centroid = (
+                    self._move_centroid_smoothly(self.centroid, gravity_center)
+                    if self.centroid is not None
+                    else gravity_center
                 )
-                mode = self._update_frequency(window, freq_counter, most_populated_bucket)
 
-                if self.position != mode:
-                    print('Move')
-                    self.position = mode
+                if new_centroid is not None:
+                    new_centroid[0] = max(min(new_centroid[0], dist_threshold), -dist_threshold)
 
-                    for camera in [cam for name, cam in self.cameras.items() if 'ptz' in name]:
-                        camera.move_to_preset(preset=ptz_camera.NUM2PRESET[self.position], speed=0x10, easing=True)
+                    if self.centroid is None:
+                        self.centroid = new_centroid
+                    elif abs(new_centroid[0] - self.centroid[0]) > 1:
+                        self.centroid = new_centroid
+
+                    for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
+                        pos = new_centroid[0] if name == 'ptz1' else -new_centroid[0]
+                        pan_hex, tilt_hex = self.bev.get_pan_from_bev(pos, ptz_cam.presets)
+
+                        ptz_camera.move(ip=ptz_cam.ip, pan_pos=int(pan_hex, 16), tilt_pos=int(tilt_hex, 16), speed=0x1)
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
@@ -165,6 +181,15 @@ class CameraSystem:
     def _transform(self, frame: np.ndarray) -> np.ndarray:
         frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
         return np.expand_dims(np.transpose(frame, (2, 0, 1)), axis=0)
+
+    def _lerp(self, t, times, points):
+        dx = points[1][0] - points[0][0]
+        dy = points[1][1] - points[0][1]
+        dt = (t - times[0]) / (times[1] - times[0])
+        return np.array([dt * dx + points[0][0], dt * dy + points[0][1]])
+
+    def _move_centroid_smoothly(self, current_pos, new_pos):
+        return self._lerp(10, [1, 100], [current_pos, new_pos])
 
     def __del__(self) -> None:
         pass

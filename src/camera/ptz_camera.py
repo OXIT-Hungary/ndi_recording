@@ -115,14 +115,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                 self.ffmpeg.stdin.close()
 
     def get_frame(self) -> np.ndarray | None:
-        """
-        Multiplies two numbers.
-
-        Returns:
-            tuple[np.ndarray | None, ]:
-                - Received frame from camera.
-                - Data type.
-        """
+        """ """
 
         t, v, _, _ = ndi.recv_capture_v3(self.receiver, 1000)
         frame = None
@@ -168,30 +161,6 @@ class PTZCamera(Camera, multiprocessing.Process):
 
             if wait:
                 self.thread_move.join()
-
-    def move(self, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = False) -> None:
-        """
-        Moves camera to a specified pan-tilt position.
-
-        Args:
-            pan_pos (int):
-            tilt_pos (int):
-            speed (int):
-        """
-
-        # fmt: off
-        command = bytes(
-            [
-                0x81, 0x01, 0x06, 0x02,  # Command header
-                speed, speed,  # Speed settings
-                (pan_pos >> 12) & 0x0F, (pan_pos >> 8) & 0x0F, (pan_pos >> 4) & 0x0F, pan_pos & 0x0F,
-                (tilt_pos >> 12) & 0x0F, (tilt_pos >> 8) & 0x0F, (tilt_pos >> 4) & 0x0F, tilt_pos & 0x0F,
-                0xFF,  # Command terminator
-            ]
-        )
-        # fmt: on
-
-        visca.send_command(ip=self.ip, command=command, wait_for_response=wait_for_response)
 
     def move_with_easing(self, pan_pos, tilt_pos, steps, max_speed):
         """
@@ -328,6 +297,31 @@ class PTZCamera(Camera, multiprocessing.Process):
 
             if distance <= threshold:
                 return pan, tilt  # Exit when within the threshold
+
+
+def move(ip, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = False) -> None:
+    """
+    Moves camera to a specified pan-tilt position.
+
+    Args:
+        pan_pos (int):
+        tilt_pos (int):
+        speed (int):
+    """
+
+    # fmt: off
+    command = bytes(
+        [
+            0x81, 0x01, 0x06, 0x02,  # Command header
+            speed, speed,  # Speed settings
+            (pan_pos >> 12) & 0x0F, (pan_pos >> 8) & 0x0F, (pan_pos >> 4) & 0x0F, pan_pos & 0x0F,
+            (tilt_pos >> 12) & 0x0F, (tilt_pos >> 8) & 0x0F, (tilt_pos >> 4) & 0x0F, tilt_pos & 0x0F,
+            0xFF,  # Command terminator
+        ]
+    )
+    # fmt: on
+
+    visca.send_command(ip=ip, command=command, wait_for_response=wait_for_response)
 
 
 class Avonic_CM93_NDI(PTZCamera):

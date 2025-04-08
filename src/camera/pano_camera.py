@@ -33,29 +33,34 @@ class PanoCamrera(Camera, multiprocessing.Process):
         width = self.config.crop[3] - x
         height = self.config.crop[2] - y
 
-        # fmt: off
-        ffmpeg = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel", "error",
-                "-rtsp_transport", "tcp",   # Use TCP for better stability
-                "-i", self.config.src,      # Input RTSP stream
-                "-f", "rawvideo",           # Output raw video
-                "-pix_fmt", "bgr24",        # Pixel format compatible with OpenCV
-                "-vsync", "0",              # Avoid frame duplication
-                "-an",                      # No audio
-                "-vf", f"fps={self.config.fps}, crop={width}:{height}:{x}:{y}",
-                "-fflags", "nobuffer",      # Reduce latency
-                "-probesize", "32",         # Reduce initial probe size
-                "-flags", "low_delay",      # Reduce decoding delay
-                "-",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=width*height*3 * 5,
-        )
-        # fmt: on
+        if not '.mp4' in self.config.src:
+            # fmt: off
+            ffmpeg = subprocess.Popen(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-rtsp_transport", "tcp",   # Use TCP for better stability
+                    "-i", self.config.src,      # Input RTSP stream
+                    "-f", "rawvideo",           # Output raw video
+                    "-pix_fmt", "bgr24",        # Pixel format compatible with OpenCV
+                    "-vsync", "0",              # Avoid frame duplication
+                    "-an",                      # No audio
+                    "-vf", f"fps={self.config.fps}, crop={width}:{height}:{x}:{y}",
+                    "-fflags", "nobuffer",      # Reduce latency
+                    "-probesize", "32",         # Reduce initial probe size
+                    "-flags", "low_delay",      # Reduce decoding delay
+                    "-",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=width*height*3 * 5,
+            )
+            # fmt: on
+        else:
+            import cv2
+
+            video_cap = cv2.VideoCapture(self.config.src)
 
         ffmpeg_out = None
         if self.save:
@@ -89,13 +94,20 @@ class PanoCamrera(Camera, multiprocessing.Process):
             while not self.event_stop.is_set():
                 start_time = time.time()
 
-                raw_frame = ffmpeg.stdout.read(width * height * 3)
-                if not raw_frame:
-                    error_output = ffmpeg.stderr.read().decode()
-                    print("FFmpeg Error:", error_output)
-                    # raise KeyboardInterrupt()
+                if not '.mp4' in self.config.src:
+                    raw_frame = ffmpeg.stdout.read(width * height * 3)
+                    if not raw_frame:
+                        error_output = ffmpeg.stderr.read().decode()
+                        print("FFmpeg Error:", error_output)
+                        # raise KeyboardInterrupt()
 
-                frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 3))
+                    frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 3))
+                else:
+                    ret, frame = video_cap.read()
+
+                    if not ret:
+                        print('END')
+                        break
 
                 if ffmpeg_out:
                     ffmpeg_out.stdin.write(frame.tobytes())
