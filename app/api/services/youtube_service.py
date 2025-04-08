@@ -84,6 +84,17 @@ class YoutubeService:
         except Exception as e:
             print(f"Error handling OAuth callback: {e}")
 
+    def clear_credentials(self):
+        try:
+            if os.path.exists(settings.TOKEN_FILE_PATH):
+                os.remove(settings.TOKEN_FILE_PATH)
+            self.credentials = None
+            self.youtube = None
+            return True
+        except Exception as e:
+            print(f"Error clearing credentials: {e}")
+            raise ValueError(f"Failed to clear credentials: {e}")
+
     def is_authenticated(self):
         if self.credentials is not None and self.youtube is not None:
             return True
@@ -126,9 +137,9 @@ class YoutubeService:
                 if is_status_active or is_time_active:
                     # Format times: add 1 hour and remove Z
                     formatted_start = (
-                        (start_time + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M") if start_time else None
+                        (start_time + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M") if start_time else None
                     )
-                    formatted_end = (end_time + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M") if end_time else None
+                    formatted_end = (end_time + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M") if end_time else None
 
                     stream = {
                         "stream_id": broadcast["id"],
