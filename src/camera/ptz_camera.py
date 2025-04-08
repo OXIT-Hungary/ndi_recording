@@ -38,6 +38,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.thread_move = None
 
         self.ffmpeg = None
+        self._stream = None
 
     def _create_receiver(self):
 
@@ -105,6 +106,10 @@ class PTZCamera(Camera, multiprocessing.Process):
                     self.ffmpeg.stdin.write(frame.tobytes())
                     self.ffmpeg.stdin.flush()
 
+                    if self._stream is not None:
+                        self._stream.stdin.write(frame.tobytes())
+                        self._stream.stdin.flush()
+
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
             print(f"PTZ Camera: {e}")
@@ -113,6 +118,10 @@ class PTZCamera(Camera, multiprocessing.Process):
             if self.ffmpeg:
                 self.ffmpeg.stdin.flush()
                 self.ffmpeg.stdin.close()
+
+    @stream.setter
+    def stream(self, value) -> None:
+        self._stream = value
 
     def get_frame(self) -> np.ndarray | None:
         """ """

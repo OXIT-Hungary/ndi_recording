@@ -4,14 +4,21 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-import main
 from app.api.services.youtube_service import youtube_service
 from app.schemas.youtube_stream import YoutubeStreamSchedule
 from src.config import load_config
+from src.camera import camera_system as camera_sys
+from src.stream import YouTubeStream
+
 
 templates = Jinja2Templates(directory="app/templates/streaming")
 
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
+
+cfg = load_config(file_path='./configs/default_config.yaml')
+cfg.court_width = 25
+cfg.court_height = 20
+camera_system = camera_sys.CameraSystem(config=cfg, out_path=cfg.out_path)
 
 
 @youtube_router.get("/auth")
@@ -77,13 +84,11 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
             return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
 
         new_stream = youtube_service.create_scheduled_stream(stream_details)
+        yt_stream = YouTubeStream(token=new_stream['stream_key'])
 
-        cfg = load_config(file_path='./default_config.yaml')
-        cfg.court_width = 25
-        cfg.court_height = 20
-        main.main(config=cfg, stream=new_stream)
+        camera_system.set_stream(yt_stream)
+        camera_system.start()
 
-        print(new_stream)
     except Exception as e:
         error_message = f"Error creating stream: {str(e)}"
         return templates.TemplateResponse("error.html", {"request": request, "error_message": error_message})

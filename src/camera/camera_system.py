@@ -194,6 +194,9 @@ class CameraSystem:
     def __del__(self) -> None:
         pass
 
+    def set_stream(self, value):
+        self.cameras['ptz1'].stream(value)
+
 
 class CameraSystemManager:
     """Wrapper class for CameraSystem."""
