@@ -195,7 +195,7 @@ class CameraSystem:
         pass
 
     def set_stream(self, value):
-        self.cameras['ptz1'].stream(value)
+        self.cameras['ptz1'].set_stream(value)
 
 
 class CameraSystemManager:

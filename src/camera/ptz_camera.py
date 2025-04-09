@@ -119,8 +119,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                 self.ffmpeg.stdin.flush()
                 self.ffmpeg.stdin.close()
 
-    @stream.setter
-    def stream(self, value) -> None:
+    def set_stream(self, value) -> None:
         self._stream = value
 
     def get_frame(self) -> np.ndarray | None:
