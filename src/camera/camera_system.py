@@ -19,7 +19,7 @@ from src.utils.tmp import get_cluster_centroid
 class CameraSystem:
     """Camera System Class which incorporates and handles PTZ and Panorama cameras."""
 
-    def __init__(self, config: CameraSystemConfig, out_path: str) -> None:
+    def __init__(self, config: CameraSystemConfig, out_path: str, stream_token=None) -> None:
         self.config = config
         self.out_path = out_path
 
@@ -48,7 +48,9 @@ class CameraSystem:
             for name, cfg in config.ptz_cameras.items():
                 if hasattr(ptz_camera, cfg.name):
                     cls = getattr(ptz_camera, cfg.name)
-                    self.cameras[name] = cls(name=name, config=cfg, event_stop=self.event_stop, out_path=out_path)
+                    self.cameras[name] = cls(
+                        name=name, config=cfg, event_stop=self.event_stop, out_path=out_path, stream_token=stream_token
+                    )
                 else:
                     raise ValueError(f"Class '{cfg.name}' not found in PTZCamera.py.")
 

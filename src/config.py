@@ -54,6 +54,7 @@ class PTZConfig:
         self.bitrate = config_dict.get("bitrate", 40000)
         self.presets = config_dict.get("presets", None)
         self.speed = config_dict.get("speed", 0x10)
+        self.stream = config_dict.get("stream", False)
 
 
 class PanoramaConfig:

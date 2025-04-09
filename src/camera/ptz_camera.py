@@ -23,7 +23,7 @@ class PTZCamera(Camera, multiprocessing.Process):
     PAN_SPEEDS = None
     TILT_SPEEDS = None
 
-    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path) -> None:
+    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path, stream_token) -> None:
         Camera.__init__(self, event_stop=event_stop)
         multiprocessing.Process.__init__(self)
 
@@ -37,8 +37,11 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.sleep_time = 1 / config.fps
         self.thread_move = None
 
+        self.do_stream = config.stream
+
         self.ffmpeg = None
-        self._stream = None
+        self.ffmpeg_stream = None
+        self.stream_token = stream_token
 
     def _create_receiver(self):
 
@@ -97,6 +100,21 @@ class PTZCamera(Camera, multiprocessing.Process):
                     ],
                     stdin=subprocess.PIPE,
                 )
+            
+            if self.do_stream:
+                self.ffmpeg_stream = subprocess.Popen(
+                [
+                    "ffmpeg",
+                    "-i", self.input_url,
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-ar", "44100",
+                    "-b:a", "128k",
+                    "-f", "flv",
+                    f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
+                ],
+                stdout=subprocess.PIPE,
+                )
             # fmt: on
 
             while not self.event_stop.is_set():
@@ -106,22 +124,21 @@ class PTZCamera(Camera, multiprocessing.Process):
                     self.ffmpeg.stdin.write(frame.tobytes())
                     self.ffmpeg.stdin.flush()
 
-                    if self._stream is not None:
-                        self._stream.stdin.write(frame.tobytes())
-                        self._stream.stdin.flush()
+                    if self.ffmpeg_stream is not None:
+                        self.ffmpeg_stream.stdin.write(frame.tobytes())
+                        self.ffmpeg_stream.stdin.flush()
 
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
             print(f"PTZ Camera: {e}")
 
         finally:
-            print('Test run')
             if self.ffmpeg:
                 self.ffmpeg.stdin.flush()
                 self.ffmpeg.stdin.close()
-
-    def set_stream(self, value) -> None:
-        self._stream = value
+            if self.ffmpeg_stream:
+                self.ffmpeg_stream.stdin.flush()
+                self.ffmpeg_stream.stdin.close()
 
     def get_frame(self) -> np.ndarray | None:
         """ """

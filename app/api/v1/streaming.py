@@ -18,7 +18,7 @@ youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
 cfg = load_config(file_path='./configs/default_config.yaml')
 cfg.court_width = 25
 cfg.court_height = 20
-camera_system = camera_sys.CameraSystem(config=cfg.camera_system, out_path=cfg.out_path)
+camera_system = None
 
 
 @youtube_router.get("/auth")
@@ -84,9 +84,11 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
             return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
 
         new_stream = youtube_service.create_scheduled_stream(stream_details)
-        yt_stream = YouTubeStream(token=new_stream['stream_key'])
 
-        camera_system.set_stream(yt_stream)
+        camera_system = camera_sys.CameraSystem(
+            config=cfg.camera_system, out_path=cfg.out_path, stream_token=new_stream['stream_key']
+        )
+
         camera_system.start()
 
     except Exception as e:

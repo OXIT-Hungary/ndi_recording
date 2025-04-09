@@ -18,6 +18,7 @@ camera_system:
         center: [0x1000c, 0xfe64]
         right: [0x100f1, 0xfe86]
       speed: 0x10
+      stream: True
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
