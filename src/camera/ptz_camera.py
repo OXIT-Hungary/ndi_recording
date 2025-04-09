@@ -23,7 +23,7 @@ class PTZCamera(Camera, multiprocessing.Process):
     PAN_SPEEDS = None
     TILT_SPEEDS = None
 
-    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path, stream_token) -> None:
+    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path) -> None:
         Camera.__init__(self, event_stop=event_stop)
         multiprocessing.Process.__init__(self)
 
@@ -37,11 +37,9 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.sleep_time = 1 / config.fps
         self.thread_move = None
 
-        self.do_stream = config.stream
-
         self.ffmpeg = None
         self.ffmpeg_stream = None
-        self.stream_token = stream_token
+        # self.stream_token = stream_token
 
     def _create_receiver(self):
 
@@ -101,11 +99,11 @@ class PTZCamera(Camera, multiprocessing.Process):
                     stdin=subprocess.PIPE,
                 )
             
-            if self.do_stream:
+            if self.config.stream:
                 self.ffmpeg_stream = subprocess.Popen(
                 [
                     "ffmpeg",
-                    "-i", self.input_url,
+                    "-i", "pipe:",
                     "-c:v", "copy",
                     "-c:a", "aac",
                     "-ar", "44100",
@@ -404,5 +402,5 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, name, config, event_stop, out_path, stream_token):
-        super().__init__(name, config, event_stop, out_path, stream_token)
+    def __init__(self, name, config, event_stop, out_path):
+        super().__init__(name, config, event_stop, out_path)
