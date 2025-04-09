@@ -404,5 +404,5 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, name, config, event_stop, out_path):
-        super().__init__(name, config, event_stop, out_path)
+    def __init__(self, name, config, event_stop, out_path, stream_token):
+        super().__init__(name, config, event_stop, out_path, stream_token)
