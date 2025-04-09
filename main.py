@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import psutil
+#import psutil
 from tqdm import tqdm
 
 from src.camera.camera_system import CameraSystem
@@ -14,8 +14,8 @@ from src.config import Config, load_config
 from src.stream import YouTubeStream
 from src.utils.logger import setup_logger
 
-p = psutil.Process(os.getpid())
-p.nice(value=-12)
+#p = psutil.Process(os.getpid())
+#p.nice(value=-12)
 
 
 def schedule(start_time: datetime, end_time: datetime) -> None:

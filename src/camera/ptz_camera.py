@@ -115,6 +115,7 @@ class PTZCamera(Camera, multiprocessing.Process):
             print(f"PTZ Camera: {e}")
 
         finally:
+            print('Test run')
             if self.ffmpeg:
                 self.ffmpeg.stdin.flush()
                 self.ffmpeg.stdin.close()

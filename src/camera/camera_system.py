@@ -125,7 +125,7 @@ class CameraSystem:
                 gravity_center = get_cluster_centroid(proj_players)
                 new_centroid = (
                     self._move_centroid_smoothly(self.centroid, gravity_center)
-                    if self.centroid is not None
+                    if self.centroid is not None and gravity_center is not None
                     else gravity_center
                 )
 

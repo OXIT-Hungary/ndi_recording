@@ -68,7 +68,7 @@ COPY app /app/app
 COPY requirements/prod.txt /app/
 COPY models/rtdetrv2_pano.onnx /app/models/
 COPY src /app/src
-COPY configs/default_config.yaml /app
+COPY configs /app/configs
 
 # Install Python dependencies in a virtual environment
 RUN python3 -m venv .venv && \

@@ -18,7 +18,7 @@ youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
 cfg = load_config(file_path='./configs/default_config.yaml')
 cfg.court_width = 25
 cfg.court_height = 20
-camera_system = camera_sys.CameraSystem(config=cfg, out_path=cfg.out_path)
+camera_system = camera_sys.CameraSystem(config=cfg.camera_system, out_path=cfg.out_path)
 
 
 @youtube_router.get("/auth")
