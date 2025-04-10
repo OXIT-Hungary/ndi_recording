@@ -23,7 +23,7 @@ class PTZCamera(Camera, multiprocessing.Process):
     PAN_SPEEDS = None
     TILT_SPEEDS = None
 
-    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path) -> None:
+    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path, stream_token=None) -> None:
         Camera.__init__(self, event_stop=event_stop)
         multiprocessing.Process.__init__(self)
 
@@ -39,7 +39,7 @@ class PTZCamera(Camera, multiprocessing.Process):
 
         self.ffmpeg = None
         self.ffmpeg_stream = None
-        # self.stream_token = stream_token
+        self.stream_token = stream_token
 
     def _create_receiver(self):
 
@@ -103,19 +103,19 @@ class PTZCamera(Camera, multiprocessing.Process):
                 self.ffmpeg_stream = subprocess.Popen(
                 [
                     "ffmpeg",
-                    "-i", "pipe:",
-                    "-c:v", "copy",
+                     "-i", "pipe:",
+                    "-c:v", "libx264",
                     "-c:a", "aac",
                     "-ar", "44100",
                     "-b:a", "128k",
                     "-f", "flv",
                     f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
                 ],
-                stdout=subprocess.PIPE,
+                stdin=subprocess.PIPE,
                 )
             # fmt: on
 
-            while not self.event_stop.is_set():
+            while not self.event_stop.is_set():                
                 start_time = time.time()
                 frame = self.get_frame()
                 if frame is not None:
@@ -402,5 +402,5 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, name, config, event_stop, out_path):
-        super().__init__(name, config, event_stop, out_path)
+    def __init__(self, name, config, event_stop, out_path, stream_token=None):
+        super().__init__(name, config, event_stop, out_path, stream_token)

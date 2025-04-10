@@ -8,6 +8,9 @@ from .api import router as api_router
 from .api.services.youtube_service import youtube_service
 from .core.utils.custom_unique_id import custom_generate_unique_id
 
+import multiprocessing
+multiprocessing.set_start_method("spawn", force=True)
+
 templates_dir = Path("app/templates/streaming")
 if not templates_dir.exists():
     templates_dir.mkdir()

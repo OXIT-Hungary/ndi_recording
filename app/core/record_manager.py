@@ -25,7 +25,9 @@ class FailedToStopRecordingException(Exception):
 
 
 class RecordManager(Schedulable):
-
+    @classmethod
+    def get_instance(cls, logger):
+        pass
 
     def start(self, *args, **kwargs):
         pass
