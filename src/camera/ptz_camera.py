@@ -101,17 +101,31 @@ class PTZCamera(Camera, multiprocessing.Process):
             
             if self.config.stream:
                 self.ffmpeg_stream = subprocess.Popen(
-                [
-                    "ffmpeg",
-                    "-i", "pipe:",
-                    "-c:v", "copy",
-                    "-c:a", "aac",
-                    "-ar", "44100",
-                    "-b:a", "128k",
-                    "-f", "flv",
-                    f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
-                ],
-                stdout=subprocess.PIPE,
+                    [
+                        "ffmpeg",
+                        "-loglevel", "error",
+                        # Video input (from stdin)
+                        "-f", "rawvideo",
+                        "-pix_fmt", "bgr24",
+                        "-s", "1920x1080",
+                        "-r", "30",
+                        "-i", "-",
+                        # Audio input (generate silence)
+                        "-f", "lavfi",
+                        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                        # Video encoding
+                        "-vcodec", "h264_nvenc",
+                        "-preset", "fast",
+                        "-b:v", "4500k",
+                        # Audio encoding
+                        "-c:a", "aac",
+                        "-ar", "44100",
+                        "-b:a", "128k",
+                        # Output format
+                        "-f", "flv",
+                        f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
+                    ],
+                stdin=subprocess.PIPE,
                 )
             # fmt: on
 

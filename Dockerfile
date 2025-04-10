@@ -71,8 +71,8 @@ COPY requirements/prod.txt /app/
 # COPY configs /app/configs
 
 # Install Python dependencies in a virtual environment
-RUN python3 -m venv .venv && \
-    ./.venv/bin/pip install --no-cache-dir -r prod.txt
+RUN python3 -m venv ~/.venvs/app && \
+    ~/.venvs/app/bin/pip install --no-cache-dir -r prod.txt
 
-CMD ["/bin/bash", "-c", "source /app/.venv/bin/activate && exec bash"]
-# CMD ["/bin/bash", "-c", "source /app/.venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+# CMD ["/bin/bash", "-c", "source /app/.venv/bin/activate && exec bash"]
+CMD ["/bin/bash", "-c", "source /app/.venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
