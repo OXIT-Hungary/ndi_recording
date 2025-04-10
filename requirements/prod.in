@@ -16,3 +16,6 @@ pydantic-settings
 protobuf
 dotenv
 jinja2
+matplotlib
+filterpy
+scikit-learn

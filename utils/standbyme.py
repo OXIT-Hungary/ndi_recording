@@ -1,6 +1,7 @@
-import time
-import socket
 import math
+import socket
+import time
+
 
 def send_visca_command(ip, port, command, wait_for_response=False, timeout=6000.0):
 
@@ -25,10 +26,9 @@ def send_visca_command(ip, port, command, wait_for_response=False, timeout=6000.
 
         print("No completion response received within timeout.")
         return False
-    
+
 
 CAMERA_IP = "192.168.33.101"
 CAMERA_PORT = 52381
 
 send_visca_command(CAMERA_IP, CAMERA_PORT, bytes.fromhex("81 0A 01 06 01 FF"))
- 

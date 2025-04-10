@@ -63,16 +63,16 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 
 # Copy application code
 WORKDIR /app
-COPY main.py /app/
-COPY app /app/app
 COPY requirements/prod.txt /app/
-COPY rtdetrv2.onnx /app/
-COPY src /app/src
-COPY config.yaml /app
+# COPY main.py /app/
+# COPY app /app/app
+# COPY models/rtdetrv2_pano.onnx /app/models/
+# COPY src /app/src
+# COPY configs /app/configs
 
 # Install Python dependencies in a virtual environment
-RUN python3 -m venv .venv && \
-    ./.venv/bin/pip install --no-cache-dir -r prod.txt
+RUN python3 -m venv ~/.venvs/app && \
+    ~/.venvs/app/bin/pip install --no-cache-dir -r prod.txt
 
 # CMD ["/bin/bash", "-c", "source /app/.venv/bin/activate && exec bash"]
 CMD ["/bin/bash", "-c", "source /app/.venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]

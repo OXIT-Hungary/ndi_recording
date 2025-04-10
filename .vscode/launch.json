@@ -10,8 +10,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "args": [
-                "--config=./config.yaml"
+                "--config=./configs/default_config.yaml",
             ],
+            "sudo": true,
             "console": "integratedTerminal"
         }
     ]
