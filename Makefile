@@ -36,4 +36,5 @@ run:
 	-v /var/run/dbus:/var/run/dbus \
 	-v /run/avahi-daemon/socket:/run/avahi-daemon/socket \
 	-v /srv/sftp/RECORDINGS:/app/output/ \
+	-v ./:/app/ \
 	ndi_record:`git rev-parse --abbrev-ref HEAD | sed 's/[^a-zA-Z0-9_\-]/_/g'`
