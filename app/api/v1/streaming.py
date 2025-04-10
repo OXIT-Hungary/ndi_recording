@@ -8,7 +8,6 @@ from app.api.services.youtube_service import youtube_service
 from app.schemas.youtube_stream import YoutubeStreamSchedule
 from src.config import load_config
 from src.camera import camera_system as camera_sys
-from src.stream import YouTubeStream
 
 
 templates = Jinja2Templates(directory="app/templates/streaming")
@@ -18,7 +17,7 @@ youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
 cfg = load_config(file_path='./configs/default_config.yaml')
 cfg.court_width = 25
 cfg.court_height = 20
-camera_system = camera_sys.CameraSystem(config=cfg.camera_system, out_path=cfg.out_path)
+camera_system = None
 
 
 @youtube_router.get("/auth")
@@ -84,6 +83,10 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
             return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
 
         new_stream = youtube_service.create_scheduled_stream(stream_details)
+        global camera_system
+        camera_system = camera_sys.CameraSystem(
+            config=cfg.camera_system, out_path=cfg.out_path, stream_token=new_stream['stream_key']
+        )
 
         camera_system.start()
 
