@@ -14,7 +14,7 @@ templates = Jinja2Templates(directory="app/templates/streaming")
 
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
 
-cfg = load_config(file_path='./configs/default_config.yaml')
+cfg = load_config(file_path='./configs/bvsc_config.yaml')
 cfg.court_width = 25
 cfg.court_height = 20
 camera_system = None

@@ -10,32 +10,32 @@ camera_system:
     ptz1:
       name: Avonic_CM93_NDI
       enable: True
-      ip: 192.168.16.11
+      ip: 192.168.33.101
       src: ndi
       fps: 30
       presets:
-        left: [0xff06, 0xfe86]
+        left: [0xfe86, 0xfe86]
         center: [0x1000c, 0xfe64]
-        right: [0x100f1, 0xfe86]
+        right: [0xfe8d, 0xfe86]
       speed: 0x10
       stream: True
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
-      ip: 192.168.16.12
+      ip: 192.168.33.102
       src: ndi
       fps: 30
       presets:
-        left: [0xfe1b, 0xfe7d]
+        left: [0xfdb1, 0xfe7d]
         center: [0x1002a, 0xfe4d]
-        right: [0x101e2, 0xfe77]
+        right: [0x1024f, 0xfe77]
       speed: 0x10
     pano:
       name: Vivotek-MS9321-EHV-V2
       enable: True
-      ip: 192.168.16.13
-      # src: rtsp
-      src: rtsp://192.168.16.13:554/media2/stream.sdp?profile=Profile200
+      ip: 192.168.33.103
+      #src: /home/bvsc-oxit/Videos/cropped.mp4
+      src: rtsp://192.168.33.103:554/media2/stream.sdp?profile=Profile200
       frame_size: [4416, 1600]
       crop: [530, 850, 1120, 3660] # (top_y, top_x, bottom_y, bottom_x)
       fps: 20

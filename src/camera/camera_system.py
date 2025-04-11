@@ -14,7 +14,7 @@ from src.camera.pano_camera import PanoCamrera
 from src.config import CameraSystemConfig
 from src.player_tracker import Tracker
 from src.utils.tmp import get_cluster_centroid
-
+from src.utils.visualize import debug_visualization
 
 class CameraSystem:
     """Camera System Class which incorporates and handles PTZ and Panorama cameras."""
@@ -22,6 +22,10 @@ class CameraSystem:
     def __init__(self, config: CameraSystemConfig, out_path: str, stream_token=None) -> None:
         self.config = config
         self.out_path = out_path
+        self.new_centroid = np.array([0,0])
+
+        self.debug_mode = True
+        self.debug_idx = 0
 
         self.manager = multiprocessing.Manager()
         self.event_stop = self.manager.Event()
@@ -102,7 +106,6 @@ class CameraSystem:
 
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 10  # 10 fps
-        dist_threshold = 20
 
         try:
             while not self.event_stop.is_set():
@@ -121,29 +124,39 @@ class CameraSystem:
                     },
                 )
 
+               # from src.utils.visualize import draw
+                #draw(image=frame, labels=labels,boxes=boxes, scores=scores)
+
                 proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
-                proj_players = proj_boxes[(labels == 2) & (scores > 0.6)]
+                proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
+
 
                 gravity_center = get_cluster_centroid(proj_players)
-                new_centroid = (
-                    self._move_centroid_smoothly(self.centroid, gravity_center)
-                    if self.centroid is not None and gravity_center is not None
-                    else gravity_center
-                )
 
-                if new_centroid is not None:
-                    new_centroid[0] = max(min(new_centroid[0], dist_threshold), -dist_threshold)
+                if gravity_center is not None: 
+                    self.centroid = (
+                        self._move_centroid_smoothly(self.centroid, gravity_center)
+                        if self.centroid is not None
+                        else gravity_center
+                    )
 
-                    if self.centroid is None:
-                        self.centroid = new_centroid
-                    elif abs(new_centroid[0] - self.centroid[0]) > 1:
-                        self.centroid = new_centroid
+
+                if self.new_centroid is not None and self.centroid is not None:
+
+                    if self.new_centroid is None:
+                        self.new_centroid = self.centroid
+                    elif abs(self.centroid[0] - self.new_centroid[0]) > 1:
+                        self.new_centroid = self.centroid
 
                     for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                        pos = new_centroid[0] if name == 'ptz1' else -new_centroid[0]
+                        pos = self.new_centroid[0] if name == 'ptz1' else -self.new_centroid[0]
                         pan_hex, tilt_hex = self.bev.get_pan_from_bev(pos, ptz_cam.presets)
 
                         ptz_camera.move(ip=ptz_cam.ip, pan_pos=int(pan_hex, 16), tilt_pos=int(tilt_hex, 16), speed=0x1)
+
+                    if self.debug_mode and self.centroid is not None and gravity_center is not None:
+                        debug_visualization(self.debug_idx, self.centroid, proj_players, gravity_center)
+                        self.debug_idx = self.debug_idx + 1
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 

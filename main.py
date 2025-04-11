@@ -60,13 +60,11 @@ def main_old(config: Config, stream) -> int:
 
 def main(config: Config):
 
-    camera_system = CameraSystem(config=config.camera_system, out_path=config.out_path)
+    camera_system = CameraSystem(config=config.camera_system, out_path=config.out_path, stream_token="byq2-0bac-31za-ww1g-6460")
     camera_system.start()
 
-    time.sleep(600)
-    print('ASD')
+    time.sleep(5400)
     camera_system.stop()
-    print('ASD2')
 
     # proc_second = multiprocessing.Process(target=secondary_proc, args=(config, queue_frame, event_stop))
     # proc_second.start()
@@ -103,15 +101,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(file_path=args.config)
 
-    cfg.schedule.start_time = (
-        datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M") if args.start_time else cfg.schedule.start_time
-    )
-    cfg.schedule.end_time = (
-        datetime.strptime(args.end_time, "%Y.%m.%d_%H:%M") if args.end_time else cfg.schedule.end_time
-    )
-    cfg.schedule.duration = (
-        datetime.strptime(args.duration, "%Y.%m.%d_%H:%M") if args.duration else cfg.schedule.duration
-    )
+    # cfg.schedule.start_time = (
+    #     datetime.strptime(args.start_time, "%Y.%m.%d_%H:%M") if args.start_time else cfg.schedule.start_time
+    # )
+    # cfg.schedule.end_time = (
+    #     datetime.strptime(args.end_time, "%Y.%m.%d_%H:%M") if args.end_time else cfg.schedule.end_time
+    # )
+    # cfg.schedule.duration = (
+    #     datetime.strptime(args.duration, "%Y.%m.%d_%H:%M") if args.duration else cfg.schedule.duration
+    # )
 
     logger = setup_logger(log_dir=cfg.out_path)
 

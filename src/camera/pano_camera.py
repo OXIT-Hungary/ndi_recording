@@ -91,7 +91,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
 
                 raw_frame = ffmpeg.stdout.read(width * height * 3)
                 if not raw_frame:
-                    pass
+                    continue
                     # raise KeyboardInterrupt()
 
                 frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 3))

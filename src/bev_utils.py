@@ -9,9 +9,9 @@ class Utils:
 
     def __init__(self):
         self.world_points = np.array([[-25, 10], [25, 10], [-25, -10], [25, -10]], dtype=np.float32)
-
+        
         self.img_pts = np.array([[549, 103], [2315, 71], [73, 470], [2746, 407]], dtype=np.float32)
-
+        #self.img_pts = np.array([[103, 549], [2315, 71], [73, 470], [2746, 407]], dtype=np.float32)
     def get_four_points(self, fig, ax):
         points = []
 
