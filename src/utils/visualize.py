@@ -194,3 +194,20 @@ class Visualization:
         x = centroid[0]
         y = 0 if on_line else centroid[1]
         ax.scatter(x, y, color='red', marker='*', s=300, edgecolor='black', linewidth=1, label='Centroid')
+        
+    def save_result_img(self, idx):
+        filename = f"dataset/output/frame_{idx}.png"
+        plt.savefig(filename)  # Save current frame
+        print(filename, " - finished")
+        
+    def debug_visualization(self, idx, centroid, players_in_bev, gravity_center):
+        
+        fig, ax = self.draw_waterpolo_court(self.args)
+        
+        self.draw_centroid(centroid, ax)
+        
+        self.draw_current_detection(players_in_bev, ax)
+        #self.vis.draw_tracked_objects(active_tracks, ax)
+        self.draw_gravity_center(gravity_center, ax)
+        self.save_result_img(idx)
+        plt.cla()
