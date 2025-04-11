@@ -10,7 +10,6 @@ import onnxruntime
 
 import src.camera.ptz_camera as ptz_camera
 from src.bev import BEV
-from src.utils.visualize import Visualization
 from src.camera.pano_camera import PanoCamrera
 from src.config import CameraSystemConfig
 from src.player_tracker import Tracker
@@ -22,15 +21,12 @@ class CameraSystem:
 
     def __init__(self, config: CameraSystemConfig, out_path: str, stream_token=None) -> None:
         
-        self.debug_mode = True
+        self.debug_mode = False
         self.debug_idx = 0
         
         self.config = config
         self.out_path = out_path
         self.new_centroid = np.array([0,0])
-
-        self.debug_mode = True
-        self.debug_idx = 0
 
         self.manager = multiprocessing.Manager()
         self.event_stop = self.manager.Event()
