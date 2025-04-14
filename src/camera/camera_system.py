@@ -20,10 +20,21 @@ class CameraSystem:
     """Camera System Class which incorporates and handles PTZ and Panorama cameras."""
 
     def __init__(self, config: CameraSystemConfig, out_path: str, stream_token=None) -> None:
-        
+
+        # Camera movement parameters
+        self.court_size_threshold = 12  #meter
+        self.lerp_step_num = 100
+        self.lerp_step_used = 10
+        self.min_move_dist = 1  #meter
+        self.cam_move_speed = 0x2
+        self.dbscan_eps = 15
+        self.dbscan_min_sample = 3
+
+        # Debug parameters
         self.debug_mode = False
         self.debug_idx = 0
         
+
         self.config = config
         self.out_path = out_path
         self.new_centroid = np.array([0,0])
@@ -128,15 +139,15 @@ class CameraSystem:
                # from src.utils.visualize import draw
                 #draw(image=frame, labels=labels,boxes=boxes, scores=scores)
 
-                proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
+                proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores, self.court_size_threshold)
                 proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
 
-                gravity_center = get_cluster_centroid(proj_players)
+                gravity_center = get_cluster_centroid(proj_players, self.dbscan_eps, self.dbscan_min_sample)
 
                 if gravity_center is not None: 
                     self.centroid = (
-                        self._move_centroid_smoothly(self.centroid, gravity_center)
+                        self._move_centroid_smoothly(self.centroid, gravity_center, self.lerp_step_num, self.lerp_step_used)
                         if self.centroid is not None
                         else gravity_center
                     )
@@ -144,16 +155,15 @@ class CameraSystem:
 
                 if self.new_centroid is not None and self.centroid is not None:
 
-                    if self.new_centroid is None:
-                        self.new_centroid = self.centroid
-                    elif abs(self.centroid[0] - self.new_centroid[0]) > 1:
+                    if self.new_centroid is None or (abs(self.centroid[0] - self.new_centroid[0]) > self.min_move_dist):
                         self.new_centroid = self.centroid
 
                     for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
                         pos = self.new_centroid[0] if name == 'ptz1' else -self.new_centroid[0]
                         pan_hex, tilt_hex = self.bev.get_pan_from_bev(pos, ptz_cam.presets)
 
-                        ptz_camera.move(ip=ptz_cam.ip, pan_pos=int(pan_hex, 16), tilt_pos=int(tilt_hex, 16), speed=0x1)
+                        ptz_camera.move(ip=ptz_cam.ip, pan_pos=int(pan_hex, 16), tilt_pos=int(tilt_hex, 16), speed=self.cam_move_speed)
+
 
                     if self.debug_mode and self.centroid is not None and gravity_center is not None:
                         debug_visualization(self.debug_idx, self.centroid, proj_players, gravity_center)
@@ -204,8 +214,8 @@ class CameraSystem:
         dt = (t - times[0]) / (times[1] - times[0])
         return np.array([dt * dx + points[0][0], dt * dy + points[0][1]])
 
-    def _move_centroid_smoothly(self, current_pos, new_pos):
-        return self._lerp(10, [1, 100], [current_pos, new_pos])
+    def _move_centroid_smoothly(self, current_pos, new_pos, lerp_step_num, lerp_step_used):
+        return self._lerp(lerp_step_used, [1, lerp_step_num], [current_pos, new_pos])       #_lerp(returned_step, steps_interval, two_positions)
 
     def __del__(self) -> None:
         pass

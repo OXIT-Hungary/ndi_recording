@@ -13,15 +13,14 @@ class BEV:
 
         self.utils = Utils()
 
-    def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
+    def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array, court_size_threshold: int) -> np.array:
 
         H = self.utils.calculate_homography()
 
         proj_boxes = self._project_boxes(boxes, H)
 
         # outlier filtering
-        _dist_threshold = 15
-        within_threshold = np.all(np.abs(proj_boxes) <= _dist_threshold, axis=1)
+        within_threshold = np.all(np.abs(proj_boxes) <= court_size_threshold, axis=1)
 
         #return proj_boxes, labels, scores
         return proj_boxes[within_threshold], labels[within_threshold], scores[within_threshold]
