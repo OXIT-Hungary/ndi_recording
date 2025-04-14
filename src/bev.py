@@ -10,7 +10,7 @@ class BEV:
     def __init__(self, config: BEVConfig):
         self.config = config
 
-        self.H = _ = cv2.findHomography(config.image_points, config.world_points, method=0)
+        self.H, _ = cv2.findHomography(config.points["image"], config.points["world"], method=0)
 
     def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
 
@@ -28,9 +28,6 @@ class BEV:
         :param bboxes: bounding box centroids. represented as [x, y, width, height]
         :param H: Homography matrix. From camera image coordinate systesm to BEV space
         """
-
-        if not len(boxes):
-            return boxes
 
         bbox_center = np.ones(shape=(len(boxes), 3))
         bbox_center[:, 0] = (boxes[:, 0] + boxes[:, 2]) / 2

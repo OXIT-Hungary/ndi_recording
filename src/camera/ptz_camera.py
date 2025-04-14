@@ -46,8 +46,8 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.sleep_time = 1 / config.fps
 
         self.queue_move = queue_move
-        self._thread_move = threading.Thread(target=self._move_thread, daemon=True)
         self._event_move = event_move
+        self._thread_move = None
 
         self.ffmpeg = None
         self.ffmpeg_stream = None
@@ -86,6 +86,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         return sources
 
     def run(self) -> None:
+        self._thread_move = threading.Thread(target=self._move_thread, daemon=True)
         self._thread_move.start()
 
         try:
@@ -353,6 +354,7 @@ class PTZCamera(Camera, multiprocessing.Process):
     def _move_thread(self) -> None:
         while not self.event_stop.is_set():
             self._event_move.wait()
+            print('running')
             if self.event_stop.is_set():
                 break
 
@@ -418,8 +420,8 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, name, config, event_stop, out_path, stream_token):
-        super().__init__(name, config, event_stop, out_path, stream_token)
+    def __init__(self, name, config, event_stop, out_path, queue_move, event_move, stream_token):
+        super().__init__(name, config, event_stop, out_path, queue_move, event_move, stream_token)
 
 
 def move(ip, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = False) -> None:
