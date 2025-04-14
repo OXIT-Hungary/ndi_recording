@@ -2,31 +2,27 @@ import cv2
 import numpy as np
 import onnxruntime
 
-from src.bev_utils import Utils
 from src.utils.tmp import calc_pan_shift, euler_to_visca, visca_to_euler
+from src.config import BEVConfig
 
 
 class BEV:
+    def __init__(self, config: BEVConfig):
+        self.config = config
 
-    def __init__(self, args):
-        self.args = args
-
-        self.utils = Utils()
+        self.H = _ = cv2.findHomography(config.image_points, config.world_points, method=0)
 
     def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
 
-        H = self.utils.calculate_homography()
+        proj_boxes = self._project_boxes(boxes)
 
-        proj_boxes = self._project_boxes(boxes, H)
+        # mask out court size
+        within_threshold = np.all(np.abs(proj_boxes) <= (self.config.court_size / 2), axis=1)
 
-        # outlier filtering
-        _dist_threshold = 15
-        within_threshold = np.all(np.abs(proj_boxes) <= _dist_threshold, axis=1)
-
-        #return proj_boxes, labels, scores
+        # return proj_boxes, labels, scores
         return proj_boxes[within_threshold], labels[within_threshold], scores[within_threshold]
 
-    def _project_boxes(self, boxes: np.array, H: np.array) -> np.array:
+    def _project_boxes(self, boxes: np.array) -> np.array:
         """
         Project centroids onto the court.
         :param bboxes: bounding box centroids. represented as [x, y, width, height]
@@ -40,14 +36,14 @@ class BEV:
         bbox_center[:, 0] = (boxes[:, 0] + boxes[:, 2]) / 2
         bbox_center[:, 1] = boxes[:, 3]
 
-        projected_centers = np.matmul(H, bbox_center.T).T
+        projected_centers = np.matmul(self.H, bbox_center.T).T
         projected_centers /= projected_centers[:, 2][:, np.newaxis]
 
         return projected_centers[:, :2]
 
     def get_pan_from_bev(self, x_axis_value, presets):
 
-        bev_x_axis_line = 20  #
+        bev_x_axis_line = 20
 
         pan_left_hexa = hex(presets['left'][0])  # configbol jonnek, pan left es right value of the presets
         pan_right_hexa = hex(presets['right'][0])
@@ -64,6 +60,11 @@ class BEV:
         pan_hex, tilt_hex = euler_to_visca(res_pan, tilt_deg)
 
         return pan_hex, tilt_hex
+
+    def calculate_reprojection_error(self):
+        projected_pts = cv2.perspectiveTransform(self.config.image_points.reshape(-1, 1, 2), self.H).squeeze()
+
+        return np.sqrt(np.sum((projected_pts - self.config.world_points) ** 2, axis=1)).mean()
 
 
 def main(args):
@@ -98,7 +99,7 @@ def main(args):
         # Update player tracking
         gravity_center, active_tracks = bev.tracker.update(players_in_bev if players_in_bev is not None else [])
 
-        #gravity_center[0] += gravity_center[0] * 0.3
+        # gravity_center[0] += gravity_center[0] * 0.3
 
         # Draw centroid for camera movement
         if len(bev.centroid) != 0:

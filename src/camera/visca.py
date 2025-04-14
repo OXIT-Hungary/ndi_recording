@@ -2,33 +2,31 @@ import logging
 import socket
 import time
 
-VISCA_PORT = 52381
-
 logger = logging.getLogger(__name__)
 
 
-def power_on(ip) -> None:
-    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"))
+def power_on(ip, port: int = 52381) -> None:
+    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"), port=port)
     if response[2] == 0x03:  # Camera off
-        send_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False)
-        send_command(ip=ip, command=bytes.fromhex("81 01 04 00 02 FF"), wait_for_response=True, timeout=15)
+        send_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False, port=port)
+        send_command(ip=ip, command=bytes.fromhex("81 01 04 00 02 FF"), wait_for_response=True, timeout=15, port=port)
 
 
-def power_off(ip) -> None:
-    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"))
+def power_off(ip, port: int = 52381) -> None:
+    response = send_inquiry(ip=ip, command=bytes.fromhex("81 09 04 00 FF"), port=port)
     if response[2] == 0x02:  # Camera off
-        send_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False)
-        send_command(ip=ip, command=bytes.fromhex("81 01 04 00 03 FF"), wait_for_response=True, timeout=15)
+        send_command(ip=ip, command=bytes.fromhex("81 01 00 01 FF"), wait_for_response=False, port=port)
+        send_command(ip=ip, command=bytes.fromhex("81 01 04 00 03 FF"), wait_for_response=True, timeout=15, port=port)
 
 
-def send_inquiry(ip, command, timeout: float = 10.0):
+def send_inquiry(ip, command, timeout: float = 10.0, port: int = 52381):
     """
     Sends a VISCA inquiry command to the camera and receives the response.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.settimeout(timeout)  # Timeout for response
         try:
-            sock.sendto(command, (ip, VISCA_PORT))  # Send the VISCA command
+            sock.sendto(command, (ip, port))  # Send the VISCA command
             response, _ = sock.recvfrom(1024)  # Receive the response
             return response
         except TimeoutError as e:
@@ -39,11 +37,11 @@ def send_inquiry(ip, command, timeout: float = 10.0):
             raise Exception(f"Error: {e}") from e
 
 
-def send_command(ip, command, wait_for_response: bool = False, timeout: float = 2.0):
+def send_command(ip, command, wait_for_response: bool = False, timeout: float = 2.0, port: int = 52381):
     """ """
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.settimeout(timeout)
-        sock.sendto(command, (ip, VISCA_PORT))
+        sock.sendto(command, (ip, port))
 
         if not wait_for_response:
             return True
@@ -64,14 +62,14 @@ def send_command(ip, command, wait_for_response: bool = False, timeout: float = 
         return False
 
 
-def get_camera_pan_tilt(ip):
+def get_camera_pan_tilt(ip, port: int = 52381) -> tuple[int, int] | None:
     """
     Queries the camera for its current pan and tilt positions.
     :param ip: Camera's IP address.
     :return: A tuple (pan_position, tilt_position).
     """
 
-    response = send_inquiry(ip, command=bytes.fromhex("81 09 06 12 FF"))
+    response = send_inquiry(ip, command=bytes.fromhex("81 09 06 12 FF"), port=port)
 
     if len(response) >= 11 and response[1] == 0x50:  # 0x50 means successful reply
         # Extract pan and tilt position values

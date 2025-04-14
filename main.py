@@ -1,21 +1,16 @@
 import multiprocessing
-import os
-import queue
-import subprocess
 import time
 from datetime import datetime
-from pathlib import Path
 
-#import psutil
+# import psutil
 from tqdm import tqdm
 
 from src.camera.camera_system import CameraSystem
 from src.config import Config, load_config
-from src.stream import YouTubeStream
 from src.utils.logger import setup_logger
 
-#p = psutil.Process(os.getpid())
-#p.nice(value=-12)
+# p = psutil.Process(os.getpid())
+# p.nice(value=-12)
 
 
 def schedule(start_time: datetime, end_time: datetime) -> None:
@@ -60,7 +55,7 @@ def main_old(config: Config, stream) -> int:
 
 def main(config: Config):
 
-    camera_system = CameraSystem(config=config.camera_system, out_path=config.out_path, stream_token="byq2-0bac-31za-ww1g-6460")
+    camera_system = CameraSystem(config=config, out_path=config.out_path)
     camera_system.start()
 
     time.sleep(5400)

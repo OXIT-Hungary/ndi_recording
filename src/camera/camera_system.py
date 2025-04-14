@@ -11,34 +11,33 @@ import onnxruntime
 import src.camera.ptz_camera as ptz_camera
 from src.bev import BEV
 from src.camera.pano_camera import PanoCamrera
-from src.config import CameraSystemConfig
+from src.config import Config
 from src.player_tracker import Tracker
 from src.utils.tmp import get_cluster_centroid
 from src.utils.visualize import debug_visualization
 
+
 class CameraSystem:
     """Camera System Class which incorporates and handles PTZ and Panorama cameras."""
 
-    def __init__(self, config: CameraSystemConfig, out_path: str, stream_token=None) -> None:
-        
-        self.debug_mode = False
-        self.debug_idx = 0
-        
-        self.config = config
+    def __init__(self, config: Config, out_path: str, stream_token=None) -> None:
+        self.config = config.camera_system
         self.out_path = out_path
-        self.new_centroid = np.array([0,0])
+        self.new_centroid = np.array([0, 0])
 
         self.manager = multiprocessing.Manager()
         self.event_stop = self.manager.Event()
         self.pano_queue = self.manager.Queue(maxsize=5)
 
-        self.bev = BEV(config)
+        self.bev = BEV(config.bev)
 
         # self.tracker = Tracker(max_age=25, min_hits=3)  # TODO: Refactor and implement bev tracking
 
-        self.centroid = None
+        self.centroid = np.array([0, 0])
 
         self.cameras = {}
+        self.camera_queues = {}
+        self.camera_events = {}
 
         if config.pano_camera.enable:
             self.cameras['pano'] = PanoCamrera(
@@ -56,10 +55,11 @@ class CameraSystem:
                     self.cameras[name] = cls(
                         name=name, config=cfg, event_stop=self.event_stop, out_path=out_path, stream_token=stream_token
                     )
+                    self.camera_queues[name] = self.manager.Queue(maxsize=1)
+                    self.camera_events[name] = self.manager.Event()
                 else:
                     raise ValueError(f"Class '{cfg.name}' not found in PTZCamera.py.")
 
-        self.position = 1
         self.thread_detect_and_track = None
 
         # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
@@ -125,35 +125,28 @@ class CameraSystem:
                     },
                 )
 
-               # from src.utils.visualize import draw
-                #draw(image=frame, labels=labels,boxes=boxes, scores=scores)
+                # from src.utils.visualize import draw
+                # draw(image=frame, labels=labels,boxes=boxes, scores=scores)
 
                 proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
                 proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
-
                 gravity_center = get_cluster_centroid(proj_players)
-
-                if gravity_center is not None: 
-                    self.centroid = (
-                        self._move_centroid_smoothly(self.centroid, gravity_center)
-                        if self.centroid is not None
-                        else gravity_center
+                if gravity_center is not None:
+                    gravity_center[0] = max(
+                        min(gravity_center[0], self.config.bev.court_size[0] / 2), -self.config.bev.court_size[0] / 2
                     )
 
+                    if abs(gravity_center[0] - self.centroid[0]) > self.config.track_threshold:
+                        self.centroid = gravity_center
 
-                if self.new_centroid is not None and self.centroid is not None:
+                        for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
+                            pos = gravity_center[0] if name == 'ptz1' else -gravity_center[0]
+                            pan_hex, tilt_hex = self.bev.get_pan_from_bev(pos, ptz_cam.presets)
 
-                    if self.new_centroid is None:
-                        self.new_centroid = self.centroid
-                    elif abs(self.centroid[0] - self.new_centroid[0]) > 1:
-                        self.new_centroid = self.centroid
-
-                    for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                        pos = self.new_centroid[0] if name == 'ptz1' else -self.new_centroid[0]
-                        pan_hex, tilt_hex = self.bev.get_pan_from_bev(pos, ptz_cam.presets)
-
-                        ptz_camera.move(ip=ptz_cam.ip, pan_pos=int(pan_hex, 16), tilt_pos=int(tilt_hex, 16), speed=0x1)
+                            if not self.camera_queues[name].full():
+                                self.camera_queues[name].put((pan_hex, tilt_hex))
+                                self.camera_events[name].set()
 
                     if self.debug_mode and self.centroid is not None and gravity_center is not None:
                         debug_visualization(self.debug_idx, self.centroid, proj_players, gravity_center)

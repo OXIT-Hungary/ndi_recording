@@ -71,3 +71,11 @@ def calc_pan_shift(bev_x_axis_line: int, x_axis_value: int, pan_distance: float)
     result_pan = pan_distance * (bev_percentage / 100)
 
     return result_pan
+
+
+def save_homography(homography, img_name, path):
+    split = img_name.split(".")
+    name_without_sfx = split[0]
+    homography_filename = f"{name_without_sfx}_homography.npy"
+    h_path = os.path.join(path, homography_filename)
+    np.save(h_path, homography)

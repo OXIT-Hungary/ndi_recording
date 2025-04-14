@@ -23,7 +23,16 @@ class PTZCamera(Camera, multiprocessing.Process):
     PAN_SPEEDS = None
     TILT_SPEEDS = None
 
-    def __init__(self, name, config: PTZConfig, event_stop: multiprocessing.Event, out_path, stream_token=None) -> None:
+    def __init__(
+        self,
+        name: str,
+        config: PTZConfig,
+        event_stop: multiprocessing.Event,
+        out_path: str,
+        queue_move: multiprocessing.Queue,
+        event_move: multiprocessing.Event,
+        stream_token: str = None,
+    ) -> None:
         Camera.__init__(self, event_stop=event_stop)
         multiprocessing.Process.__init__(self)
 
@@ -35,7 +44,10 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.ip = config.ip
         self.presets = config.presets
         self.sleep_time = 1 / config.fps
-        self.thread_move = None
+
+        self.queue_move = queue_move
+        self._thread_move = threading.Thread(target=self._move_thread, daemon=True)
+        self._event_move = event_move
 
         self.ffmpeg = None
         self.ffmpeg_stream = None
@@ -74,6 +86,8 @@ class PTZCamera(Camera, multiprocessing.Process):
         return sources
 
     def run(self) -> None:
+        self._thread_move.start()
+
         try:
             self.receiver = self._create_receiver()
             # fmt: off
@@ -191,7 +205,7 @@ class PTZCamera(Camera, multiprocessing.Process):
             tilt_pos = self.presets[preset][1]
 
             if not easing:
-                self.thread_move = threading.Thread(target=self.move, args=(pan_pos, tilt_pos, speed))
+                self.thread_move = threading.Thread(target=move, args=(pan_pos, tilt_pos, speed))
             else:
                 self.thread_move = threading.Thread(target=self.move_with_easing, args=(pan_pos, tilt_pos, 50, 0x12))
 
@@ -308,7 +322,7 @@ class PTZCamera(Camera, multiprocessing.Process):
     def _find_closest_key(self, value_dict, target_value):
         return min(value_dict, key=lambda k: abs(value_dict[k] - target_value))
 
-    def _wait_until_position_reached(self, dest_pan: int, dest_tilt: int, threshold: int = 15) -> tuple[int, int]:
+    def _wait_until_position_reached(self, dest_pan: int, dest_tilt: int, threshold: int = 5) -> tuple[int, int]:
         """
         Waits until the camera reaches the target pan and tilt positions within a given threshold using Euclidean distance.
 
@@ -336,30 +350,18 @@ class PTZCamera(Camera, multiprocessing.Process):
             if distance <= threshold:
                 return pan, tilt  # Exit when within the threshold
 
+    def _move_thread(self) -> None:
+        while not self.event_stop.is_set():
+            self._event_move.wait()
+            if self.event_stop.is_set():
+                break
 
-def move(ip, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = False) -> None:
-    """
-    Moves camera to a specified pan-tilt position.
+            if not self.queue_move.empty():
+                pan_pos, tilt_pos = self.queue_move.get()
 
-    Args:
-        pan_pos (int):
-        tilt_pos (int):
-        speed (int):
-    """
+                self.move_with_easing(pan_pos=pan_pos, tilt_pos=tilt_pos, steps=20, max_speed=0x05)
 
-    # fmt: off
-    command = bytes(
-        [
-            0x81, 0x01, 0x06, 0x02,  # Command header
-            speed, speed,  # Speed settings
-            (pan_pos >> 12) & 0x0F, (pan_pos >> 8) & 0x0F, (pan_pos >> 4) & 0x0F, pan_pos & 0x0F,
-            (tilt_pos >> 12) & 0x0F, (tilt_pos >> 8) & 0x0F, (tilt_pos >> 4) & 0x0F, tilt_pos & 0x0F,
-            0xFF,  # Command terminator
-        ]
-    )
-    # fmt: on
-
-    visca.send_command(ip=ip, command=command, wait_for_response=wait_for_response)
+            self._event_move.clear()
 
 
 class Avonic_CM93_NDI(PTZCamera):
@@ -418,3 +420,28 @@ class Avonic_CM93_NDI(PTZCamera):
 
     def __init__(self, name, config, event_stop, out_path, stream_token):
         super().__init__(name, config, event_stop, out_path, stream_token)
+
+
+def move(ip, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = False) -> None:
+    """
+    Moves camera to a specified pan-tilt position.
+
+    Args:
+        pan_pos (int):
+        tilt_pos (int):
+        speed (int):
+    """
+
+    # fmt: off
+    command = bytes(
+        [
+            0x81, 0x01, 0x06, 0x02,  # Command header
+            speed, speed,  # Speed settings
+            (pan_pos >> 12) & 0x0F, (pan_pos >> 8) & 0x0F, (pan_pos >> 4) & 0x0F, pan_pos & 0x0F,
+            (tilt_pos >> 12) & 0x0F, (tilt_pos >> 8) & 0x0F, (tilt_pos >> 4) & 0x0F, tilt_pos & 0x0F,
+            0xFF,  # Command terminator
+        ]
+    )
+    # fmt: on
+
+    visca.send_command(ip=ip, command=command, wait_for_response=wait_for_response)

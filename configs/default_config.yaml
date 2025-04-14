@@ -6,6 +6,7 @@ schedule:
 out_path: ./output
 
 camera_system:
+
   cameras:
     ptz1:
       name: Avonic_CM93_NDI
@@ -39,6 +40,12 @@ camera_system:
       frame_size: [4416, 1600]
       crop: [530, 850, 1120, 3660] # (top_y, top_x, bottom_y, bottom_x)
       fps: 20
-  
+
   pano_onnx: ./models/rtdetrv2_pano.onnx
- 
+  track_threshold: 2.0
+  
+bev:
+  points:
+    world: [[-25, 10], [25, 10], [-25, -10], [25, -10]]
+    image: [[549, 103], [2315, 71], [73, 470], [2746, 407]]
+  court_size: [25, 20]
