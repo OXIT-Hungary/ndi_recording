@@ -12,9 +12,7 @@ class BEV:
 
         self.H = _ = cv2.findHomography(config.image_points, config.world_points, method=0)
 
-    def project_to_bev(
-        self, boxes: np.array, labels: np.array, scores: np.array, court_size_threshold: int
-    ) -> np.array:
+    def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
 
         proj_boxes = self._project_boxes(boxes)
 

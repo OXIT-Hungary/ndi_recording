@@ -128,7 +128,7 @@ class CameraSystem:
                 # from src.utils.visualize import draw
                 # draw(image=frame, labels=labels,boxes=boxes, scores=scores)
 
-                proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores, self.court_size_threshold)
+                proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
                 proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
                 gravity_center = get_cluster_centroid(proj_players)
