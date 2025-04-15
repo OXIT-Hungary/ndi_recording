@@ -2,138 +2,76 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
-from PIL import Image, ImageDraw
 
 class2color = {1: (255, 0, 0), 2: (0, 255, 0), 3: (255, 255, 0)}
 class2str = {1: 'Goalkeeper', 2: 'Player', 3: 'Referee'}
 
+color_map = {'red': (0, 0, 255), 'gray': (128, 128, 128), 'yellow': (0, 255, 255), 'green': (0, 255, 0)}
 
-def draw(image, labels, boxes, scores, thrh=0.5):
 
-    scr = scores
-    lab = labels[scr > thrh]
-    box = boxes[scr > thrh]
+def draw_boxes(
+    frame: np.ndarray, labels: np.ndarray, boxes: np.ndarray, scores: np.ndarray, thrashold: float = 0.5
+) -> np.ndarray:
+
+    mask = scores > thrashold
+    labels = labels[mask]
+    boxes = boxes[mask]
+    scores = scores[mask]
 
     for box, label, score in zip(boxes, labels, scores):
-        if score > thrh:
-            cv2.rectangle(image, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), (0,255,0),3)
-            
-    cv2.imwrite("./output/cv.png", np.array(image))
+        cv2.rectangle(img=frame, pt1=(box[0], [1]), pt2=(box[2], [3]), color=class2color[label], thickness=2)
+
+    return frame
 
 
+def draw_bev():
+    pass
 
 
-def draw_waterpolo_court():
+def draw_waterpolo_court(court_width: float = 25.0, court_height: float = 20, padding: float = 5, scale: int = 20):
+    def coord_to_px(x: float, y: float) -> tuple[int, int]:
+        """Convert court coords (meters) to image coords (pixels)."""
+        x_px = int((x + court_width / 2) * scale)
+        y_px = int((court_height / 2 - y) * scale)
+        return x_px, y_px
 
-    draw_boundary = True
-    draw_half_line = True
-    draw_2m_line = draw_5m_line = draw_6m_line = True
-    court_height = 20
-    court_width = 25
+    width_px = int((court_width + padding) * scale)
+    height_px = int((court_height) * scale)
 
-    fig, ax = plt.subplots()
-    ax.set_aspect('equal')
-    ax.set_xlim(-court_width, court_width)
-    ax.set_ylim(-court_height / 2, court_height / 2)
-    ax.set_title("BEV")
-    ax.grid(False)
+    img = np.ones((height_px, width_px, 3), dtype=np.uint8) * 255
 
+    half_w = court_width / 2
+    half_h = court_height / 2
 
-    # Draw boundary with colored segments
-    if draw_boundary:
-        half_height = court_height / 2
-        x_left = -court_width / 2
-        x_right = court_width / 2
+    # Draw half lines
+    cv2.line(img, coord_to_px(0, -half_h), coord_to_px(0, half_h), (150, 150, 150), 1)
+    cv2.line(img, coord_to_px(-half_w, 0), coord_to_px(half_w, 0), (100, 100, 100), 1)
 
-        half_width = court_width / 2
-        y_bottom = -court_height / 2
-        y_top = court_height / 2
+    # Draw top/bottom border lines
+    cv2.line(img, coord_to_px(-12.5, half_h - 1), coord_to_px(12.5, half_h - 1), (0, 0, 230), 2)
+    cv2.line(img, coord_to_px(-12.5, -half_h + 1), coord_to_px(12.5, -half_h + 1), (0, 0, 230), 2)
 
-        # Top and bottom boundaries
-        ax.axhline(y=half_height, color='black', linewidth=2)
-        ax.axhline(y=-half_height, color='black', linewidth=2)
+    cv2.line(img, coord_to_px(-10.5, half_h - 1), coord_to_px(10.5, half_h - 1), (0, 230, 230), 2)
+    cv2.line(img, coord_to_px(-10.5, -half_h + 1), coord_to_px(10.5, -half_h + 1), (0, 230, 230), 2)
 
-        # Left boundary segments
-        segments = [
-            (-half_height, -half_height + 2, 'red'),
-            (-half_height + 2, -half_height + 6.5, 'gray'),
-            (-half_height + 6.5, -half_height + 8.5, 'red'),
-            (-half_height + 8.5, half_height - 8.5, 'gray'),
-            (half_height - 2, half_height - 6.5, 'gray'),
-            (half_height - 6.5, half_height - 8.5, 'red'),
-            (half_height - 8.5, -(half_height - 8.5), 'gray'),
-            (half_height, half_height - 2, 'red'),
-        ]
-        for y_start, y_end, color in segments:
-            ax.plot([x_left, x_left], [y_start, y_end], color=color, linewidth=5)
+    cv2.line(img, coord_to_px(-7.5, half_h - 1), coord_to_px(-7.3, half_h - 1), (0, 0, 230), 2)
+    cv2.line(img, coord_to_px(-7.5, -half_h + 1), coord_to_px(-7.3, -half_h + 1), (0, 0, 230), 2)
+    cv2.line(img, coord_to_px(7.5, half_h - 1), coord_to_px(7.3, half_h - 1), (0, 0, 230), 2)
+    cv2.line(img, coord_to_px(7.5, -half_h + 1), coord_to_px(7.3, -half_h + 1), (0, 0, 230), 2)
 
-        # Right boundary segments
-        segments = [
-            (half_height, half_height - 2, 'red'),
-            (half_height - 2, half_height - 6.5, 'gray'),
-            (half_height - 6.5, half_height - 8.5, 'red'),
-            (half_height - 8.5, -(half_height - 8.5), 'gray'),
-            (-half_height + 2, -half_height + 6.5, 'gray'),
-            (-half_height + 6.5, -half_height + 8.5, 'red'),
-            (-half_height + 8.5, half_height - 8.5, 'gray'),
-            (-half_height, -half_height + 2, 'red'),
-        ]
-        for y_start, y_end, color in segments:
-            ax.plot([x_right, x_right], [y_start, y_end], color=color, linewidth=5)
+    cv2.line(img, coord_to_px(-half_w, half_h), coord_to_px(half_w, half_h), (0, 0, 0), 2)
+    cv2.line(img, coord_to_px(-half_w, -half_h), coord_to_px(half_w, -half_h), (0, 0, 0), 2)
+    cv2.line(img, coord_to_px(-6.5, half_h - 1), coord_to_px(7.5, half_h - 1), (0, 200, 0), 2)
+    cv2.line(img, coord_to_px(-6.5, -half_h + 1), coord_to_px(7.5, -half_h + 1), (0, 200, 0), 2)
 
-        # bottom boundary segments
-        segments = [
-            (half_width, half_width - 2, 'red'),
-            (half_width - 2, half_width - 6, 'yellow'),
-            (-half_width + 6, half_width - 6, 'green'),
-            (-half_width + 2, -half_width + 6, 'yellow'),
-            (-half_width, -half_width + 2, 'red'),
-        ]
-        for x_start, x_end, color in segments:
-            ax.plot([x_start, x_end], [y_bottom, y_bottom], color=color, linewidth=4)
+    # Draw left/right borders
+    cv2.line(img, coord_to_px(-(half_w + 0.3), -half_h), coord_to_px(-(half_w + 0.3), half_h), (0, 0, 0), 2)
+    cv2.line(img, coord_to_px(half_w + 0.3, -half_h), coord_to_px(half_w + 0.3, half_h), (0, 0, 0), 2)
+    # cv2.line(img, coord_to_px(-half_w, half_h), coord_to_px(12.5, -half_h + 1), (0, 0, 230), 2)
 
-        # # top boundary segments
-        segments = [
-            (half_width, half_width - 2, 'red'),
-            (half_width - 2, half_width - 6, 'yellow'),
-            (-half_width + 6, half_width - 6, 'green'),
-            (-half_width + 2, -half_width + 6, 'yellow'),
-            (-half_width, -half_width + 2, 'red'),
-        ]
-        for x_start, x_end, color in segments:
-            ax.plot([x_start, x_end], [y_top, y_top], color=color, linewidth=4)
+    cv2.imshow('court', img)
+    cv2.waitKey(0)
 
-    # Draw half-distance line
-    if draw_half_line:
-        ax.axvline(0, color='black', linestyle='-', linewidth=1)
-
-    # Draw 2-meter lines (red)
-    if draw_2m_line:
-        distance = 2.0
-        x_left = -court_width / 2 + distance
-        x_right = court_width / 2 - distance
-        ax.axvline(x_left, color='red', linestyle='--', linewidth=1)
-        ax.axvline(x_right, color='red', linestyle='--', linewidth=1)
-
-    # Draw 5-meter lines (red)
-    if draw_5m_line:
-        distance = 5.0
-        x_left = -court_width / 2 + distance
-        x_right = court_width / 2 - distance
-        ax.axvline(x_left, color='red', linestyle='--', linewidth=1)
-        ax.axvline(x_right, color='red', linestyle='--', linewidth=1)
-
-    # Draw 6-meter lines (green)
-    if draw_6m_line:
-        distance = 6.0
-        x_left = -court_width / 2 + distance
-        x_right = court_width / 2 - distance
-        ax.axvline(x_left, color='green', linestyle='--', linewidth=1)
-        ax.axvline(x_right, color='green', linestyle='--', linewidth=1)
-
-    # points = get_four_points(fig, ax)
-    # plt.show()
-    return fig, ax
 
 def visualize_homography_result(img: npt.ArrayLike, homography: npt.ArrayLike) -> None:
 
@@ -157,16 +95,19 @@ def visualize_homography_result(img: npt.ArrayLike, homography: npt.ArrayLike) -
 
     plt.show()
 
+
 def draw_current_detection(players_in_bev, ax):
     if players_in_bev is not None:
         ax.scatter(players_in_bev[:, 0], players_in_bev[:, 1], color='red', marker='o', label='Detections')
+
 
 def draw_tracked_objects(active_tracks, ax):
     for track in active_tracks:
         x, y = track.kf.x[0], track.kf.x[1]
         ax.scatter(x, y, color='blue', marker='x')
         ax.text(x, y, f'ID: {track.track_id}', fontsize=8, bbox=dict(facecolor='yellow', alpha=0.5))
-        # draw_velocity_vector(track, ax)
+        # self.draw_velocity_vector(track, ax)
+
 
 def draw_velocity_vector(track, ax):
     x = track.kf.x[0]
@@ -175,17 +116,19 @@ def draw_velocity_vector(track, ax):
     vy = track.kf.x[3]
     ax.arrow(x, y, vx, vy, head_width=0.5, head_length=1, fc='green', ec='green')
 
+
 def draw_gravity_center(gravity_center, ax):
     ax.scatter(
         gravity_center[0],
         gravity_center[1],
         color='gold',
         marker='*',
-        s=100,
+        s=300,
         edgecolor='black',
         linewidth=1,
         label='Gravity Center',
     )
+
 
 def draw_centroid(centroid, ax, on_line=True):
     x = centroid[0]
@@ -193,16 +136,5 @@ def draw_centroid(centroid, ax, on_line=True):
     ax.scatter(x, y, color='red', marker='*', s=300, edgecolor='black', linewidth=1, label='Centroid')
 
 
-def save_result_img(idx):
-    filename = f"output/frame_{idx}.png"
-
-    plt.savefig(filename)  # Save current frame     
-
-def debug_visualization(idx, centroid, players_in_bev, gravity_center):
-    fig, ax = draw_waterpolo_court()
-
-    draw_centroid(centroid, ax)
-    draw_current_detection(players_in_bev, ax)
-    draw_gravity_center(gravity_center, ax)
-    save_result_img(idx)
-    plt.cla()
+if __name__ == "__main__":
+    draw_waterpolo_court()

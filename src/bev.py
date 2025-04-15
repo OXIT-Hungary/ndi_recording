@@ -42,12 +42,12 @@ class BEV:
 
         bev_x_axis_line = 20
 
-        pan_left_hexa = hex(presets['left'][0])  # configbol jonnek, pan left es right value of the presets
-        pan_right_hexa = hex(presets['right'][0])
-        tilt_hexa = hex(presets['left'][1])
+        pan_left = presets['left'][0]  # configbol jonnek, pan left es right value of the presets
+        pan_right = presets['right'][0]
+        tilt = presets['left'][1]
 
-        pan_deg_left, tilt_deg = visca_to_euler(pan_left_hexa, tilt_hexa)
-        pan_deg_right, tilt_deg = visca_to_euler(pan_right_hexa, tilt_hexa)
+        pan_deg_left, tilt_deg = visca_to_euler(pan_left, tilt)
+        pan_deg_right, tilt_deg = visca_to_euler(pan_right, tilt)
 
         pan_deg_left = abs(pan_deg_left)
         pan_deg_right = abs(pan_deg_right)
@@ -56,7 +56,10 @@ class BEV:
         res_pan = calc_pan_shift(bev_x_axis_line, x_axis_value, pan_distance)
         pan_hex, tilt_hex = euler_to_visca(res_pan, tilt_deg)
 
-        return pan_hex, tilt_hex
+        pan_pos = int(pan_hex, 16) + 65536 if int(pan_hex, 16) < 3000 else int(pan_hex, 16)
+        tilt_pos = int(tilt_hex, 16) + 65536 if int(tilt_hex, 16) < 3000 else int(tilt_hex, 16)
+
+        return pan_pos, tilt_pos
 
     def calculate_reprojection_error(self):
         projected_pts = cv2.perspectiveTransform(self.config.image_points.reshape(-1, 1, 2), self.H).squeeze()

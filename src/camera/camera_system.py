@@ -14,7 +14,6 @@ from src.camera.pano_camera import PanoCamrera
 from src.config import Config
 from src.player_tracker import Tracker
 from src.utils.tmp import get_cluster_centroid
-from src.utils.visualize import debug_visualization
 
 
 class CameraSystem:
@@ -55,9 +54,15 @@ class CameraSystem:
                     self.camera_queues[name] = self.manager.Queue(maxsize=1)
                     self.camera_events[name] = self.manager.Event()
                     self.cameras[name] = cls(
-                        name=name, config=cfg, event_stop=self.event_stop, out_path=out_path, queue_move=self.camera_queues[name], event_move=self.camera_events[name], stream_token=stream_token
+                        name=name,
+                        config=cfg,
+                        event_stop=self.event_stop,
+                        out_path=out_path,
+                        queue_move=self.camera_queues[name],
+                        event_move=self.camera_events[name],
+                        stream_token=stream_token,
                     )
-                    
+
                 else:
                     raise ValueError(f"Class '{cfg.name}' not found in PTZCamera.py.")
 
@@ -130,27 +135,23 @@ class CameraSystem:
                     proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
                     proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
-                    gravity_center = get_cluster_centroid(proj_players, 15, 3)
+                    gravity_center = get_cluster_centroid(points=proj_players, eps=15, min_samples=3)
                     if gravity_center is not None:
                         gravity_center[0] = max(
-                            min(gravity_center[0], self.bev.config.court_size[0] / 2), -self.bev.config.court_size[0] / 2
+                            min(gravity_center[0], self.bev.config.court_size[0] / 2),
+                            -self.bev.config.court_size[0] / 2,
                         )
 
                         if abs(gravity_center[0] - self.centroid[0]) > self.config.track_threshold:
                             self.centroid = gravity_center
 
                             for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                                pos = gravity_center[0] if name == 'ptz1' else -gravity_center[0]
-                                pan_hex, tilt_hex = self.bev.get_pan_from_bev(pos, ptz_cam.presets)
+                                pos_world = gravity_center[0] if name == 'ptz1' else -gravity_center[0]
+                                pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
 
                                 if not self.camera_queues[name].full():
-                                    print('1')
-                                    self.camera_queues[name].put((pan_hex, tilt_hex))
+                                    self.camera_queues[name].put((pan_pos, 0))
                                     self.camera_events[name].set()
-
-                    # if self.debug_mode and self.centroid is not None and gravity_center is not None:
-                    #     debug_visualization(self.debug_idx, self.centroid, proj_players, gravity_center)
-                    #     self.debug_idx = self.debug_idx + 1
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 

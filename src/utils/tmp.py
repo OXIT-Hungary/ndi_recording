@@ -4,8 +4,7 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 
 
-def hex_to_signed_int(hex_value):
-    int_value = int(hex_value, 16)
+def hex_to_signed_int(int_value):
     if int_value > 0x7FFF:  # Handle two’s complement negative values
         int_value -= 0x10000
     return int_value
@@ -34,7 +33,7 @@ def euler_to_visca(pan_deg, tilt_deg):
     hex_pan = signed_int_to_hex(pan_int)
     hex_tilt = signed_int_to_hex(tilt_int)
 
-    return pan_int, tilt_int
+    return hex_pan, hex_tilt
 
 
 def get_cluster_centroid(points: np.array, eps: float = 10.0, min_samples: int = 3):
