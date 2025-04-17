@@ -107,6 +107,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     has_frame, frame = video_cap.read()
                     if not has_frame:
                         self.event_stop.set()
+                        break
 
                 if ffmpeg_out is not None:
                     ffmpeg_out.stdin.write(frame.tobytes())

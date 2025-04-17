@@ -2,6 +2,7 @@ import multiprocessing
 import queue
 import threading
 import time
+import os
 
 import cv2
 import NDIlib as ndi
@@ -19,9 +20,11 @@ from src.utils.tmp import get_cluster_centroid
 class CameraSystem:
     """Camera System Class which incorporates and handles PTZ and Panorama cameras."""
 
-    def __init__(self, config: Config, out_path: str, stream_token=None) -> None:
+    def __init__(self, config: Config, stream_token: str = None) -> None:
         self.config = config.camera_system
-        self.out_path = out_path
+        self.out_path = config.out_path
+        os.makedirs(self.out_path, exist_ok=True)
+
         self.new_centroid = np.array([0, 0])
 
         self.manager = multiprocessing.Manager()
@@ -43,8 +46,8 @@ class CameraSystem:
                 config=self.config.pano_camera,
                 queue=self.pano_queue,
                 event_stop=self.event_stop,
-                save=True,
-                out_path=out_path,
+                save=False,
+                out_path=self.out_path,
             )
 
         for name, cfg in self.config.ptz_cameras.items():
@@ -57,7 +60,7 @@ class CameraSystem:
                         name=name,
                         config=cfg,
                         event_stop=self.event_stop,
-                        out_path=out_path,
+                        out_path=self.out_path,
                         queue_move=self.camera_queues[name],
                         event_move=self.camera_events[name],
                         stream_token=stream_token,

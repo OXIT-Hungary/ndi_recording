@@ -55,10 +55,10 @@ def main_old(config: Config, stream) -> int:
 
 def main(config: Config):
 
-    camera_system = CameraSystem(config=config, out_path=config.out_path)
+    camera_system = CameraSystem(config=config)
     camera_system.start()
 
-    time.sleep(5400)
+    time.sleep(1800)
     camera_system.stop()
 
     # proc_second = multiprocessing.Process(target=secondary_proc, args=(config, queue_frame, event_stop))
@@ -81,17 +81,6 @@ if __name__ == "__main__":
     parser.add_argument("--start_time", type=str, required=False, default=None)
     parser.add_argument("--end_time", type=str, required=False, default=None)
     parser.add_argument("--duration", type=str, required=False, default=None)
-
-    # BEV arguments
-    parser.add_argument('--court-width', type=float, default=25.0, help='Width of the court in meters (default: 30)')
-    parser.add_argument('--court-height', type=float, default=20.0, help='Height of the court in meters (default: 20)')
-    parser.add_argument('--no-boundary', action='store_false', dest='draw_boundary', help='Disable court boundary')
-    parser.add_argument(
-        '--no-half-line', action='store_false', dest='draw_half_line', help='Disable half-distance line'
-    )
-    parser.add_argument('--no-2m', action='store_false', dest='draw_2m_line', help='Disable 2-meter lines')
-    parser.add_argument('--no-5m', action='store_false', dest='draw_5m_line', help='Disable 5-meter lines')
-    parser.add_argument('--no-6m', action='store_false', dest='draw_6m_line', help='Disable 6-meter lines')
 
     args = parser.parse_args()
     cfg = load_config(file_path=args.config)
