@@ -46,6 +46,19 @@
         #scheduleSubmitButton .spinner-border {
             margin-right: 5px;
         }
+        /* Status badge styling */
+        .badge.bg-ended {
+            background-color: #6c757d !important;
+        }
+        .badge.bg-live {
+            background-color: #198754 !important;
+        }
+        .badge.bg-scheduled {
+            background-color: #0d6efd !important;
+        }
+        .badge.bg-error {
+            background-color: #dc3545 !important;
+        }
     </style>
 </head>
 <body>
@@ -69,7 +82,21 @@
                     <div class="card stream-card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">{{ stream.title }}</h5>
-                            <span class="badge {% if stream.status == 'ready' %}bg-success{% elif stream.status == 'created' %}bg-warning{% else %}bg-info{% endif %}">{{ stream.status }}</span>
+                            {% if stream.status == 'ended' %}
+                                <span class="badge bg-ended">Ended</span>
+                            {% elif stream.status == 'live' %}
+                                <span class="badge bg-live">Live</span>
+                            {% elif stream.status == 'scheduled' %}
+                                <span class="badge bg-scheduled">Scheduled</span>
+                            {% elif stream.status == 'error' %}
+                                <span class="badge bg-error">Error</span>
+                            {% elif stream.status == 'ready' %}
+                                <span class="badge bg-success">Ready</span>
+                            {% elif stream.status == 'created' %}
+                                <span class="badge bg-warning">Created</span>
+                            {% else %}
+                                <span class="badge bg-info">{{ stream.status }}</span>
+                            {% endif %}
                         </div>
                         <div class="card-body">
                             <div class="schedule-info">
@@ -161,7 +188,13 @@
         </div>
     </div>
 
+    <!-- Add auto-refresh script to update statuses -->
     <script>
+        // Auto-refresh the page every 60 seconds to update stream statuses
+        setTimeout(function() {
+            window.location.reload();
+        }, 60000);
+        
         // Handle stream deletion
         document.querySelectorAll('.delete-stream').forEach(button => {
             button.addEventListener('click', async (e) => {
