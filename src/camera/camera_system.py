@@ -3,6 +3,7 @@ import queue
 import threading
 import time
 import os
+from  datetime import datetime
 
 import cv2
 import NDIlib as ndi
@@ -22,7 +23,7 @@ class CameraSystem:
 
     def __init__(self, config: Config, stream_token: str = None) -> None:
         self.config = config.camera_system
-        self.out_path = config.out_path
+        self.out_path = f"{config.out_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         os.makedirs(self.out_path, exist_ok=True)
 
         self.new_centroid = np.array([0, 0])

@@ -48,6 +48,7 @@ class PTZConfig:
         self.name = config_dict.get("name", None)
         self.enable = config_dict.get("enable", False)
         self.ip = config_dict.get("ip", None)
+        self.visca_port = config_dict.get("visca_port", 1259)
         self.resolution = config_dict.get("resolution", [1920, 1080])
         self.codec = config_dict.get("codec", "h264_nvenc")
         self.ext = config_dict.get("ext", ".mp4")
@@ -94,8 +95,7 @@ class Config:
         self.camera_system = CameraSystemConfig(config_dict=config_dict.get("camera_system", {}))
         self.bev = BEVConfig(config_dict=config_dict.get("bev", {}))
 
-        self.out_path = f"{config_dict.get('out_path', './output')}/{datetime.now().strftime('%Y%m%d_%H%M')}"
-        os.makedirs(self.out_path, exist_ok=True)
+        self.out_path = f"{config_dict.get('out_path', './output')}"
 
 
 def load_config(file_path: str):

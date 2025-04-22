@@ -42,6 +42,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.receiver = None
 
         self.ip = config.ip
+        self.visca_port = config.visca_port
         self.presets = config.presets
         self.sleep_time = 1 / config.fps
 
@@ -96,7 +97,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                     [
                         "ffmpeg",
                         "-hide_banner",
-                        "-loglevel", "info",
+                        "-loglevel", "error",
                         "-f", "rawvideo",
                         "-pix_fmt", "bgr24",
                         "-s", "1920x1080",
@@ -181,13 +182,13 @@ class PTZCamera(Camera, multiprocessing.Process):
     def power_on(self) -> None:
         """Powers on camera with VISCA command."""
 
-        visca.power_on(self.ip)
+        visca.power_on(ip=self.ip, port=self.visca_port)
         self.move_to_preset(preset='center', speed=0x14)
 
     def power_off(self) -> None:
         """Powers off camera with VISCA command."""
 
-        visca.power_off(self.ip)
+        visca.power_off(ip=self.ip, port=self.visca_port)
 
     def move_to_preset(self, preset: str, speed: int, easing: bool = False, wait: bool = False) -> None:
         """
@@ -225,7 +226,7 @@ class PTZCamera(Camera, multiprocessing.Process):
             speed (int):
         """
 
-        start_pan, start_tilt = visca.get_camera_pan_tilt(self.ip)
+        start_pan, start_tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
         pan_positions, start_pan = self._calculate_intermediate_positions(start_pan, pan_pos, steps)
         tilt_positions, start_tilt = self._calculate_intermediate_positions(start_tilt, tilt_pos, steps)
 
@@ -250,7 +251,7 @@ class PTZCamera(Camera, multiprocessing.Process):
             ])
             # fmt: on
 
-            visca.send_command(ip=self.ip, command=command)
+            visca.send_command(ip=self.ip, command=command, port=self.visca_port)
             current_pan, current_tilt = self._wait_until_position_reached(dest_pan=next_pan, dest_tilt=next_tilt)
 
     def _calculate_intermediate_positions(self, start, end, steps) -> tuple[list, int]:
@@ -338,9 +339,9 @@ class PTZCamera(Camera, multiprocessing.Process):
             - Tilt position
         """
 
-        while True:
+        while not self.event_stop.is_set():
             time.sleep(0.05)
-            ret = visca.get_camera_pan_tilt(self.ip)
+            ret = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
             if ret is None:
                 continue
 
@@ -424,7 +425,7 @@ class Avonic_CM93_NDI(PTZCamera):
         super().__init__(name, config, event_stop, out_path, queue_move, event_move, stream_token)
 
 
-def move(ip, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = False) -> None:
+def move(ip, visca_port: int, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = False) -> None:
     """
     Moves camera to a specified pan-tilt position.
 
@@ -446,4 +447,4 @@ def move(ip, pan_pos: int, tilt_pos: int, speed: int, wait_for_response: bool = 
     )
     # fmt: on
 
-    visca.send_command(ip=ip, command=command, wait_for_response=wait_for_response)
+    visca.send_command(ip=ip, command=command, port=visca_port, wait_for_response=wait_for_response)

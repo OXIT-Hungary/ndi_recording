@@ -1,3 +1,7 @@
+from typing import Dict, Optional
+import threading
+import datetime
+
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -12,7 +16,108 @@ templates = Jinja2Templates(directory="app/templates/streaming")
 
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
 
-camera_system = None
+cfg = load_config(file_path='./configs/fradi_config.yaml')
+
+stream_timers: Dict[str, 'StreamTimer'] = {}
+stream_statuses: Dict[str, str] = {}
+
+
+class StreamTimer:
+    def __init__(self, config, stream_token, stream_id, start_time, end_time):
+        self.camera_sys = None
+        self.config = config
+        self.stream_token = stream_token
+        self.stream_id = stream_id
+        self.start_time = start_time
+        self.end_time = end_time
+        self.start_timer: Optional[threading.Timer] = None
+        self.end_timer: Optional[threading.Timer] = None
+        self.running = False
+
+    def schedule_stream(self):
+        """Schedule the start and end of the stream at the specified times"""
+        # Calculate seconds until start and end
+        now = datetime.datetime.now(datetime.timezone.utc)
+        seconds_until_start = max(0, (self.start_time - now).total_seconds())
+        seconds_until_end = max(0, (self.end_time - now).total_seconds())
+
+        print(f"Stream {self.stream_id} will start in {seconds_until_start:.1f} seconds")
+        print(f"Stream {self.stream_id} will end in {seconds_until_end:.1f} seconds")
+
+        # Update global status
+        if now >= self.end_time:
+            stream_statuses[self.stream_id] = "ended"
+        elif now >= self.start_time:
+            stream_statuses[self.stream_id] = "live"
+        else:
+            stream_statuses[self.stream_id] = "scheduled"
+
+        # Schedule start timer if start time is in the future
+        if seconds_until_start > 0:
+            self.start_timer = threading.Timer(seconds_until_start, self.start_stream)
+            self.start_timer.daemon = True
+            self.start_timer.start()
+        else:
+            # Start immediately if start time is in the past and before end time
+            if now < self.end_time:
+                self.start_stream()
+            else:
+                # Stream's scheduled time has already passed
+                stream_statuses[self.stream_id] = "ended"
+                return
+
+        # Schedule end timer
+        if seconds_until_end > 0:
+            self.end_timer = threading.Timer(seconds_until_end, self.end_stream)
+            self.end_timer.daemon = True
+            self.end_timer.start()
+
+    def start_stream(self):
+        """Start the camera system and streaming"""
+        print(f"Starting stream {self.stream_id} at {datetime.datetime.now()}")
+        try:
+            if not self.running:
+                # Initialize camera system only when starting (lazy initialization)
+                self.camera_sys = camera_sys.CameraSystem(
+                    config=self.config,
+                    stream_token=self.stream_token
+                )
+                self.camera_sys.start()
+                self.running = True
+                # Update status
+                stream_statuses[self.stream_id] = "live"
+        except Exception as e:
+            print(f"Error starting stream {self.stream_id}: {str(e)}")
+            stream_statuses[self.stream_id] = "error"
+
+    def end_stream(self):
+        """Stop the camera system and streaming"""
+        print(f"Ending stream {self.stream_id} at {datetime.datetime.now()}")
+        try:
+            if self.running and self.camera_sys:
+                self.camera_sys.stop()
+                self.camera_sys = None  # Release the camera system
+                self.running = False
+            
+            # Update status regardless of whether it was running
+            stream_statuses[self.stream_id] = "ended"
+            
+            # Keep the timer in the dictionary, but mark it as ended
+            # We don't delete it so we can show the ended status
+        except Exception as e:
+            print(f"Error ending stream {self.stream_id}: {str(e)}")
+            stream_statuses[self.stream_id] = "error"
+
+    def cancel(self):
+        """Cancel all scheduled timers"""
+        if self.start_timer:
+            self.start_timer.cancel()
+            self.start_timer = None
+        if self.end_timer:
+            self.end_timer.cancel()
+            self.end_timer = None
+        if self.running and self.camera_sys:
+            self.end_stream()
 
 
 @youtube_router.get("/auth")
@@ -65,6 +170,59 @@ def get_scheduled_streams(request: Request):
             return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
 
         scheduled_streams = youtube_service.list_streams()
+        
+        # Check for any existing streams that don't have timers and create them
+        for stream in scheduled_streams:
+            stream_id = stream['stream_id']
+            
+            # Apply our custom status if we have one
+            if stream_id in stream_statuses:
+                stream['status'] = stream_statuses[stream_id]
+            
+            # If stream doesn't have a timer yet and isn't marked as ended, set one up
+            if stream_id not in stream_timers and stream.get('status') != "ended":
+                # Try to get stream details to set up timer
+                try:
+                    stream_details = youtube_service.get_stream_details(stream_id)
+                    
+                    # Parse times from string format to datetime objects with UTC timezone
+                    try:
+                        start_time = datetime.datetime.strptime(
+                            stream['scheduled_start_time'], "%Y-%m-%d %H:%M"
+                        )
+                        # Adjust timezone - assuming the times are in local time and need to be converted to UTC
+                        start_time = start_time.replace(tzinfo=datetime.timezone.utc) - datetime.timedelta(hours=2)
+                        
+                        end_time = datetime.datetime.strptime(
+                            stream['scheduled_end_time'], "%Y-%m-%d %H:%M"
+                        )
+                        # Adjust timezone - assuming the times are in local time and need to be converted to UTC
+                        end_time = end_time.replace(tzinfo=datetime.timezone.utc) - datetime.timedelta(hours=2)
+                        
+                        # Create and schedule the timer
+                        stream_timer = StreamTimer(
+                            config=cfg,
+                            stream_token=stream_details['stream_key'],
+                            stream_id=stream_id,
+                            start_time=start_time,
+                            end_time=end_time
+                        )
+                        stream_timers[stream_id] = stream_timer
+                        stream_timer.schedule_stream()
+                        
+                        print(f"Set up timer for existing stream {stream_id}")
+                    except ValueError as e:
+                        print(f"Error parsing date for stream {stream_id}: {str(e)}")
+                except Exception as e:
+                    print(f"Error setting up timer for existing stream {stream_id}: {str(e)}")
+                    # Continue to next stream if there's an error with this one
+                    continue
+        
+        # Add statuses from our tracking system
+        for stream in scheduled_streams:
+            if stream['stream_id'] in stream_statuses:
+                stream['status'] = stream_statuses[stream['stream_id']]
+        
         return templates.TemplateResponse("streams.html", {"request": request, "streams": scheduled_streams})
     except Exception as e:
         error_message = f"Error fetching streams: {str(e)}"
@@ -77,24 +235,54 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
         if not youtube_service.is_authenticated():
             return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
 
+        # Create the YouTube stream
         new_stream = youtube_service.create_scheduled_stream(stream_details)
-        cfg = load_config(file_path='./configs/bvsc_config.yaml')
+        stream_id = new_stream['broadcast_id']
+        
+        # Cancel any existing timer for this stream (just in case)
+        if stream_id in stream_timers:
+            stream_timers[stream_id].cancel()
+        
+        # Create a new stream timer for this specific stream
+        stream_timer = StreamTimer(
+            config=cfg,
+            stream_token=new_stream['stream_key'],
+            stream_id=stream_id,
+            start_time=stream_details.start_time,
+            end_time=stream_details.end_time
+        )
+        
+        # Store the timer in our dictionary
+        stream_timers[stream_id] = stream_timer
+        
+        # Initially mark as scheduled
+        stream_statuses[stream_id] = "scheduled"
+        
+        # Schedule the stream
+        stream_timer.schedule_stream()
 
-        global camera_system
-        camera_system = camera_sys.CameraSystem(config=cfg, stream_token=new_stream['stream_key'])
-
-        camera_system.start()
+        # Return success to the frontend
+        return {"status": "success", "message": "Stream scheduled successfully"}
 
     except Exception as e:
         error_message = f"Error creating stream: {str(e)}"
-        return templates.TemplateResponse("error.html", {"request": request, "error_message": error_message})
+        return {"status": "error", "detail": error_message}
 
 
 @youtube_router.delete("/delete/{stream_id}")
 def delete_stream(stream_id: str, request: Request):
     try:
         if not youtube_service.is_authenticated():
-            return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
+            return {"status": "error", "message": "Not authenticated. Please authenticate first."}
+
+        # Cancel the specific stream timer if it exists
+        if stream_id in stream_timers:
+            stream_timers[stream_id].cancel()
+            del stream_timers[stream_id]
+        
+        # Remove from status tracking
+        if stream_id in stream_statuses:
+            del stream_statuses[stream_id]
 
         success = youtube_service.delete_stream(stream_id)
         if success:
@@ -102,4 +290,4 @@ def delete_stream(stream_id: str, request: Request):
         return {"status": "error", "message": f"Failed to delete stream {stream_id}"}
     except Exception as e:
         error_message = f"Error deleting stream: {str(e)}"
-        return templates.TemplateResponse("error.html", {"request": request, "error_message": error_message})
+        return {"status": "error", "message": error_message}
