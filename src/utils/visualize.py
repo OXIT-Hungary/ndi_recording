@@ -10,67 +10,23 @@ color_map = {'red': (0, 0, 255), 'gray': (128, 128, 128), 'yellow': (0, 255, 255
 
 
 def draw_boxes(
-    frame: np.ndarray, labels: np.ndarray, boxes: np.ndarray, scores: np.ndarray, thrashold: float = 0.5
+    frame: np.ndarray, labels: np.ndarray, boxes: np.ndarray, scores: np.ndarray, threshold: float = 0.5
 ) -> np.ndarray:
 
-    mask = scores > thrashold
+    mask = scores > threshold
     labels = labels[mask]
-    boxes = boxes[mask]
+    boxes = boxes[mask].astype(np.uint16)
     scores = scores[mask]
 
-    for box, label, score in zip(boxes, labels, scores):
-        cv2.rectangle(img=frame, pt1=(box[0], [1]), pt2=(box[2], [3]), color=class2color[label], thickness=2)
+    for box, label in zip(boxes, labels):
+        cv2.rectangle(img=frame, pt1=(box[0], box[1]), pt2=(box[2], box[3]), color=class2color[label], thickness=2)
+        # cv2.putText(img=frame, text=f"ID: {}")
 
     return frame
 
 
 def draw_bev():
     pass
-
-
-def draw_waterpolo_court(court_width: float = 25.0, court_height: float = 20, padding: float = 5, scale: int = 20):
-    def coord_to_px(x: float, y: float) -> tuple[int, int]:
-        """Convert court coords (meters) to image coords (pixels)."""
-        x_px = int((x + court_width / 2) * scale)
-        y_px = int((court_height / 2 - y) * scale)
-        return x_px, y_px
-
-    width_px = int((court_width + padding) * scale)
-    height_px = int((court_height) * scale)
-
-    img = np.ones((height_px, width_px, 3), dtype=np.uint8) * 255
-
-    half_w = court_width / 2
-    half_h = court_height / 2
-
-    # Draw half lines
-    cv2.line(img, coord_to_px(0, -half_h), coord_to_px(0, half_h), (150, 150, 150), 1)
-    cv2.line(img, coord_to_px(-half_w, 0), coord_to_px(half_w, 0), (100, 100, 100), 1)
-
-    # Draw top/bottom border lines
-    cv2.line(img, coord_to_px(-12.5, half_h - 1), coord_to_px(12.5, half_h - 1), (0, 0, 230), 2)
-    cv2.line(img, coord_to_px(-12.5, -half_h + 1), coord_to_px(12.5, -half_h + 1), (0, 0, 230), 2)
-
-    cv2.line(img, coord_to_px(-10.5, half_h - 1), coord_to_px(10.5, half_h - 1), (0, 230, 230), 2)
-    cv2.line(img, coord_to_px(-10.5, -half_h + 1), coord_to_px(10.5, -half_h + 1), (0, 230, 230), 2)
-
-    cv2.line(img, coord_to_px(-7.5, half_h - 1), coord_to_px(-7.3, half_h - 1), (0, 0, 230), 2)
-    cv2.line(img, coord_to_px(-7.5, -half_h + 1), coord_to_px(-7.3, -half_h + 1), (0, 0, 230), 2)
-    cv2.line(img, coord_to_px(7.5, half_h - 1), coord_to_px(7.3, half_h - 1), (0, 0, 230), 2)
-    cv2.line(img, coord_to_px(7.5, -half_h + 1), coord_to_px(7.3, -half_h + 1), (0, 0, 230), 2)
-
-    cv2.line(img, coord_to_px(-half_w, half_h), coord_to_px(half_w, half_h), (0, 0, 0), 2)
-    cv2.line(img, coord_to_px(-half_w, -half_h), coord_to_px(half_w, -half_h), (0, 0, 0), 2)
-    cv2.line(img, coord_to_px(-6.5, half_h - 1), coord_to_px(7.5, half_h - 1), (0, 200, 0), 2)
-    cv2.line(img, coord_to_px(-6.5, -half_h + 1), coord_to_px(7.5, -half_h + 1), (0, 200, 0), 2)
-
-    # Draw left/right borders
-    cv2.line(img, coord_to_px(-(half_w + 0.3), -half_h), coord_to_px(-(half_w + 0.3), half_h), (0, 0, 0), 2)
-    cv2.line(img, coord_to_px(half_w + 0.3, -half_h), coord_to_px(half_w + 0.3, half_h), (0, 0, 0), 2)
-    # cv2.line(img, coord_to_px(-half_w, half_h), coord_to_px(12.5, -half_h + 1), (0, 0, 230), 2)
-
-    cv2.imshow('court', img)
-    cv2.waitKey(0)
 
 
 def visualize_homography_result(img: npt.ArrayLike, homography: npt.ArrayLike) -> None:
@@ -137,4 +93,4 @@ def draw_centroid(centroid, ax, on_line=True):
 
 
 if __name__ == "__main__":
-    draw_waterpolo_court()
+    pass

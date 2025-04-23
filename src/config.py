@@ -87,6 +87,7 @@ class BEVConfig:
     def __init__(self, config_dict):
         self.points = {key: np.array(val) for key, val in config_dict.get("points", {}).items()}
         self.court_size = np.array(config_dict.get("court_size", [25, 20]))
+        self.court_padding = np.array(config_dict.get("court_padding", [2, 1]))
 
 
 class Config:

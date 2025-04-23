@@ -59,9 +59,9 @@ def get_cluster_centroid(points: np.array, eps: float = 10.0, min_samples: int =
     cluster_points = points[cluster_mask]
 
     # Calculate gravity center
-    gravity_center = cluster_points.mean(axis=0)
+    cluster_center = cluster_points.mean(axis=0)
 
-    return gravity_center
+    return cluster_center, cluster_points
 
 
 def calc_pan_shift(bev_x_axis_line: int, x_axis_value: int, pan_distance: float) -> float:

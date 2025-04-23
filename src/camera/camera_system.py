@@ -3,7 +3,7 @@ import queue
 import threading
 import time
 import os
-from  datetime import datetime
+from datetime import datetime
 
 import cv2
 import NDIlib as ndi
@@ -14,8 +14,8 @@ import src.camera.ptz_camera as ptz_camera
 from src.bev import BEV
 from src.camera.pano_camera import PanoCamrera
 from src.config import Config
-from src.player_tracker import Tracker
 from src.utils.tmp import get_cluster_centroid
+import src.utils.visualize as visualize
 
 
 class CameraSystem:
@@ -33,8 +33,6 @@ class CameraSystem:
         self.pano_queue = self.manager.Queue(maxsize=5)
 
         self.bev = BEV(config.bev)
-
-        # self.tracker = Tracker(max_age=25, min_hits=3)  # TODO: Refactor and implement bev tracking
 
         self.centroid = np.array([0, 0])
 
@@ -136,21 +134,43 @@ class CameraSystem:
                 )
 
                 if len(boxes):
+                    img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
+                    img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
                     proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
+                    img_bev = self.bev.draw(detections=proj_boxes, scale=15)
+
                     proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
-                    gravity_center = get_cluster_centroid(points=proj_players, eps=15, min_samples=3)
-                    if gravity_center is not None:
-                        gravity_center[0] = max(
-                            min(gravity_center[0], self.bev.config.court_size[0] / 2),
+                    cluster_center, cluster_points = get_cluster_centroid(points=proj_players, eps=3, min_samples=3)
+                    img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
+                    cv2.circle(
+                        img_bev,
+                        center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
+                        radius=3,
+                        color=(0, 0, 255),
+                        thickness=-1,
+                    )
+
+                    new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
+                    new_image[
+                        :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
+                    ] = img_bev
+
+                    img_out = np.concatenate((img_pano, new_image), axis=0)
+                    cv2.imshow('asd', img_out)
+                    cv2.waitKey(0)
+
+                    if cluster_center is not None:
+                        cluster_center[0] = max(
+                            min(cluster_center[0], self.bev.config.court_size[0] / 2),
                             -self.bev.config.court_size[0] / 2,
                         )
 
-                        if abs(gravity_center[0] - self.centroid[0]) > self.config.track_threshold:
-                            self.centroid = gravity_center
+                        if abs(cluster_center[0] - self.centroid[0]) > self.config.track_threshold:
+                            self.centroid = cluster_center
 
                             for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                                pos_world = gravity_center[0] if name == 'ptz1' else -gravity_center[0]
+                                pos_world = cluster_center[0] if name == 'ptz1' else -cluster_center[0]
                                 pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
 
                                 if not self.camera_queues[name].full():

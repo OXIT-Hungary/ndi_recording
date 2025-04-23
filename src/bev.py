@@ -1,14 +1,23 @@
 import cv2
 import numpy as np
-import onnxruntime
 
 from src.utils.tmp import calc_pan_shift, euler_to_visca, visca_to_euler
 from src.config import BEVConfig
 
 
+class Goal:
+    INTERNAL_HEIGHT = 0.9
+    INTERNAL_WIDTH = 3.0
+    NET_DEPTH = 1.1
+
+
 class BEV:
+
     def __init__(self, config: BEVConfig):
         self.config = config
+
+        self.court_width = self.config.court_size[0]
+        self.court_height = self.config.court_size[1]
 
         self.H, _ = cv2.findHomography(config.points["image"], config.points["world"], method=0)
 
@@ -66,74 +75,323 @@ class BEV:
 
         return np.sqrt(np.sum((projected_pts - self.config.world_points) ** 2, axis=1)).mean()
 
+    def coord_to_px(self, x: float, y: float, scale: int = 20) -> tuple[int, int]:
+        """Convert court coords (meters) to image coords (pixels)."""
+        x_px = int((x + self.court_width / 2 + self.config.court_padding[0]) * scale)
+        y_px = int((self.court_height / 2 - y + self.config.court_padding[1]) * scale)
 
-def main(args):
+        return x_px, y_px
 
-    bev = BEV(args=args)
+    def draw(self, detections: np.array = np.array([]), scale: int = 20):
 
-    homography = bev.utils.calculate_homography()
-    rmse = bev.utils.calculate_reprojection_error(homography)
-    print(rmse)
+        img = self.draw_court(scale=scale)
+        img = self.draw_detections(img=img, dets=detections, scale=scale)
 
-    video_capture = cv2.VideoCapture(bev.data.video_path)
+        return img
 
-    onnx_session = onnxruntime.InferenceSession(
-        bev.data.model_path, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
-    )
+    def draw_court(self, scale: int = 20) -> np.ndarray:
+        width_px = int((self.court_width + 2 * self.config.court_padding[0]) * scale)
+        height_px = int((self.court_height + 2 * self.config.court_padding[1]) * scale)
 
-    filtered_positions = []
-    while True:
-        ret, frame = video_capture.read()
-        if not ret:
-            break
-        img = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
-        img = np.expand_dims(np.transpose(img, (2, 0, 1)), axis=0)
+        img = np.ones((height_px, width_px, 3), dtype=np.uint8) * np.array([229, 172, 2], dtype=np.uint8)
 
-        fig, ax = bev.vis.draw_waterpolo_court(bev.args)
+        half_w = self.court_width / 2
+        half_h = self.court_height / 2
 
-        # ONNX - RT_DETR
-        players_in_bev = bev.utils.onnx__inference(
-            H=homography, frame_size=(2810, 730), img=img, onnx_session=onnx_session
+        # Draw half lines
+        cv2.line(
+            img,
+            self.coord_to_px(x=0, y=-half_h, scale=scale),
+            self.coord_to_px(x=0, y=half_h, scale=scale),
+            (230, 230, 230),
+            1,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w - self.config.court_padding[0], y=0, scale=scale),
+            self.coord_to_px(x=half_w + self.config.court_padding[0], y=0, scale=scale),
+            (230, 230, 230),
+            1,
         )
 
-        # Update player tracking
-        gravity_center, active_tracks = bev.tracker.update(players_in_bev if players_in_bev is not None else [])
+        # Draw red boxes in corners
+        cv2.rectangle(
+            img,
+            self.coord_to_px(x=-(half_w + 0.3 + 1.08), y=-half_h, scale=scale),
+            self.coord_to_px(x=-(half_w + 0.3), y=-half_h + 2, scale=scale),
+            (100, 100, 230),
+            -1,
+        )
+        cv2.rectangle(
+            img,
+            self.coord_to_px(x=-(half_w + 0.3 + 1.08), y=half_h, scale=scale),
+            self.coord_to_px(x=-(half_w + 0.3), y=half_h - 2, scale=scale),
+            (100, 100, 230),
+            -1,
+        )
+        cv2.rectangle(
+            img,
+            self.coord_to_px(x=(half_w + 0.3 + 1.08), y=-half_h, scale=scale),
+            self.coord_to_px(x=(half_w + 0.3), y=-half_h + 2, scale=scale),
+            (100, 100, 230),
+            -1,
+        )
+        cv2.rectangle(
+            img,
+            self.coord_to_px(x=(half_w + 0.3 + 1.08), y=half_h, scale=scale),
+            self.coord_to_px(x=(half_w + 0.3), y=half_h - 2, scale=scale),
+            (100, 100, 230),
+            -1,
+        )
 
-        # gravity_center[0] += gravity_center[0] * 0.3
+        # Draw top border line
+        cv2.line(
+            img,
+            self.coord_to_px(x=-(half_w + self.config.court_padding[0]), y=half_h, scale=scale),
+            self.coord_to_px(x=(half_w + self.config.court_padding[0]), y=half_h, scale=scale),
+            (180, 180, 180),
+            2,
+        )
 
-        # Draw centroid for camera movement
-        if len(bev.centroid) != 0:
-            bev.centroid = bev.utils.move_centroid_smoothly(bev.centroid, gravity_center)
-            bev.vis.draw_centroid(bev.centroid, ax)
-        else:
-            bev.centroid = gravity_center
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w, y=half_h, scale=scale),
+            self.coord_to_px(x=half_w, y=half_h, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w + 2, y=half_h, scale=scale),
+            self.coord_to_px(x=half_w - 2, y=half_h, scale=scale),
+            (0, 230, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w + 6, y=half_h, scale=scale),
+            self.coord_to_px(x=half_w - 6, y=half_h, scale=scale),
+            (0, 200, 0),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=half_w - 5.1, y=half_h, scale=scale),
+            self.coord_to_px(x=half_w - 5, y=half_h, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w + 5.1, y=half_h, scale=scale),
+            self.coord_to_px(x=-half_w + 5, y=half_h, scale=scale),
+            (0, 0, 230),
+            2,
+        )
 
-        # Visualization
-        bev.vis.draw_current_detection(players_in_bev, ax)
-        bev.vis.draw_tracked_objects(active_tracks, ax)
-        bev.vis.draw_gravity_center(gravity_center, ax)
+        # Draw bottom border line
+        cv2.line(
+            img,
+            self.coord_to_px(x=-(half_w + self.config.court_padding[0]), y=-half_h, scale=scale),
+            self.coord_to_px(x=(half_w + self.config.court_padding[0]), y=-half_h, scale=scale),
+            (180, 180, 180),
+            2,
+        )
 
-        bev.data.save_result_img(plt)
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w, y=-half_h, scale=scale),
+            self.coord_to_px(x=half_w, y=-half_h, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w + 2, y=-half_h, scale=scale),
+            self.coord_to_px(x=half_w - 2, y=-half_h, scale=scale),
+            (0, 230, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w + 6, y=-half_h, scale=scale),
+            self.coord_to_px(x=half_w - 6, y=-half_h, scale=scale),
+            (0, 200, 0),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=half_w - 5.1, y=-half_h, scale=scale),
+            self.coord_to_px(x=half_w - 5, y=-half_h, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w + 5.1, y=-half_h, scale=scale),
+            self.coord_to_px(x=-half_w + 5, y=-half_h, scale=scale),
+            (0, 0, 230),
+            2,
+        )
 
-    bev.data.create_and_save_gif()
+        # Draw Left Border
+        cv2.line(
+            img,
+            self.coord_to_px(x=-(half_w + 0.3), y=half_h + self.config.court_padding[1], scale=scale),
+            self.coord_to_px(x=-(half_w + 0.3), y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (180, 180, 180),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-(half_w + 0.3), y=Goal.INTERNAL_WIDTH / 2 + 2, scale=scale),
+            self.coord_to_px(x=-(half_w + 0.3), y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-(half_w + 0.3), y=-half_h - self.config.court_padding[1], scale=scale),
+            self.coord_to_px(x=-(half_w + 0.3), y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (180, 180, 180),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-(half_w + 0.3), y=-Goal.INTERNAL_WIDTH / 2 - 2, scale=scale),
+            self.coord_to_px(x=-(half_w + 0.3), y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-(half_w + 0.3 + 1.08), y=-half_h - self.config.court_padding[1], scale=scale),
+            self.coord_to_px(x=-(half_w + 0.3 + 1.08), y=half_h + self.config.court_padding[1], scale=scale),
+            (180, 180, 180),
+            2,
+        )
 
-    print("GIF saved as animation.gif!")
+        # Draw Left Goal
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w, y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            self.coord_to_px(x=-half_w - 1.3, y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (255, 255, 255),
+            4,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w, y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            self.coord_to_px(x=-half_w - 1.3, y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (255, 255, 255),
+            4,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=-half_w - 1.3, y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            self.coord_to_px(x=-half_w - 1.3, y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (255, 255, 255),
+            4,
+        )
+
+        # Draw Right Border
+        cv2.line(
+            img,
+            self.coord_to_px(x=(half_w + 0.3), y=half_h + self.config.court_padding[1], scale=scale),
+            self.coord_to_px(x=(half_w + 0.3), y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (180, 180, 180),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=(half_w + 0.3), y=Goal.INTERNAL_WIDTH / 2 + 2, scale=scale),
+            self.coord_to_px(x=(half_w + 0.3), y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=(half_w + 0.3), y=-half_h - self.config.court_padding[1], scale=scale),
+            self.coord_to_px(x=(half_w + 0.3), y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (180, 180, 180),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=(half_w + 0.3), y=-Goal.INTERNAL_WIDTH / 2 - 2, scale=scale),
+            self.coord_to_px(x=(half_w + 0.3), y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (0, 0, 230),
+            2,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=(half_w + 0.3 + 1.08), y=-half_h - self.config.court_padding[1], scale=scale),
+            self.coord_to_px(x=(half_w + 0.3 + 1.08), y=half_h + self.config.court_padding[1], scale=scale),
+            (180, 180, 180),
+            2,
+        )
+
+        # Draw Right Goal
+        cv2.line(
+            img,
+            self.coord_to_px(x=half_w, y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            self.coord_to_px(x=half_w + 1.3, y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (255, 255, 255),
+            4,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=half_w, y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            self.coord_to_px(x=half_w + 1.3, y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (255, 255, 255),
+            4,
+        )
+        cv2.line(
+            img,
+            self.coord_to_px(x=half_w + 1.3, y=-Goal.INTERNAL_WIDTH / 2, scale=scale),
+            self.coord_to_px(x=half_w + 1.3, y=Goal.INTERNAL_WIDTH / 2, scale=scale),
+            (255, 255, 255),
+            4,
+        )
+
+        return img
+
+    def draw_detections(self, img: np.ndarray, dets: np.ndarray, scale: int = 20, cluster: bool = False) -> np.ndarray:
+        for det in dets:
+            if not cluster:
+                cv2.circle(
+                    img,
+                    center=self.coord_to_px(x=det[0], y=det[1], scale=scale),
+                    radius=2,
+                    color=(0, 0, 0),
+                    thickness=-1,
+                )
+            else:
+                cv2.circle(
+                    img,
+                    center=self.coord_to_px(x=det[0], y=det[1], scale=scale),
+                    radius=3,
+                    color=(0, 255, 255),
+                    thickness=1,
+                )
+
+        return img
+
+
+def main(config):
+
+    bev = BEV(config=config)
+    bev.draw()
 
 
 if __name__ == "__main__":
     import argparse
+    from src.config import load_config
 
-    parser = argparse.ArgumentParser(description='Draw a water polo court with enhanced markings.')
-    parser.add_argument('--court-width', type=float, default=25.0, help='Width of the court in meters (default: 30)')
-    parser.add_argument('--court-height', type=float, default=20.0, help='Height of the court in meters (default: 20)')
-    parser.add_argument('--no-boundary', action='store_false', dest='draw_boundary', help='Disable court boundary')
-    parser.add_argument(
-        '--no-half-line', action='store_false', dest='draw_half_line', help='Disable half-distance line'
-    )
-    parser.add_argument('--no-2m', action='store_false', dest='draw_2m_line', help='Disable 2-meter lines')
-    parser.add_argument('--no-5m', action='store_false', dest='draw_5m_line', help='Disable 5-meter lines')
-    parser.add_argument('--no-6m', action='store_false', dest='draw_6m_line', help='Disable 6-meter lines')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, help="Config path.", required=False, default="./default_config.yaml")
 
     args = parser.parse_args()
+    cfg = load_config(file_path=args.config)
 
-    main(args)
+    main(config=cfg.bev)

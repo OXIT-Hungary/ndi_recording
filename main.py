@@ -34,25 +34,6 @@ def schedule(start_time: datetime, end_time: datetime) -> None:
     logger.info(f"Finished waiting.")
 
 
-def main_old(config: Config, stream) -> int:
-
-    youtube_stream = YouTubeStream(token=stream["stream_key"])
-    youtube_stream.start()
-
-    try:
-        delta_time = int((config.schedule.end_time - config.schedule.start_time).total_seconds())
-        with tqdm(total=delta_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
-            i = 0
-            while i < delta_time and not event_stop.is_set():
-                time.sleep(1)
-                progress.update(1)
-                i += 1
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received. Terminating processes...")
-    finally:
-        event_stop.set()
-
-
 def main(config: Config):
 
     camera_system = CameraSystem(config=config)
@@ -60,13 +41,6 @@ def main(config: Config):
 
     time.sleep(1800)
     camera_system.stop()
-
-    # proc_second = multiprocessing.Process(target=secondary_proc, args=(config, queue_frame, event_stop))
-    # proc_second.start()
-
-    logger.info("Finished recording.")
-    # for cfg in config.camera_system.ptz_cameras.values():
-    #     visca.power_off(cfg.ip)
 
     return 0
 
@@ -95,7 +69,7 @@ if __name__ == "__main__":
     #     datetime.strptime(args.duration, "%Y.%m.%d_%H:%M") if args.duration else cfg.schedule.duration
     # )
 
-    logger = setup_logger(log_dir=cfg.out_path)
+    # logger = setup_logger(log_dir=cfg.out_path)
 
     schedule(cfg.schedule.start_time, cfg.schedule.end_time)
 
