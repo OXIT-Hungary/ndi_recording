@@ -228,7 +228,6 @@
             });
         });
 
-        // Handle form submission
         document.getElementById('scheduleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -243,7 +242,6 @@
             // Disable delete buttons during scheduling
             deleteButtons.forEach(button => button.disabled = true);
             // --- End Loading State ---
-
 
             const formData = new FormData(scheduleForm);
             const startTime = new Date(formData.get('start_time'));
@@ -278,13 +276,16 @@
                     body: JSON.stringify(data)
                 });
 
-                if (response.ok) {
+                const responseData = await response.json();
+                
+                if (response.ok && responseData.status === 'success') {
                     alert('Stream scheduled successfully. It will automatically start and end at the specified times.');
                     location.reload(); // Reload on success
                     // No need to manually re-enable buttons here as the page reloads
                 } else {
-                    const errorData = await response.json();
-                    alert(`Error: ${errorData.detail || 'Unknown error'}`);
+                    // Handle both response.ok==false and responseData.status=='error'
+                    const errorMessage = responseData.detail || responseData.message || 'Unknown error occurred';
+                    alert(`Error: ${errorMessage}`);
                     // --- Restore Button State on API Error ---
                     submitButton.disabled = false;
                     spinner.classList.add('d-none');

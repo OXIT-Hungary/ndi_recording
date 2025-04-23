@@ -2,7 +2,7 @@ from typing import Dict, Optional
 import threading
 import datetime
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -233,40 +233,58 @@ def get_scheduled_streams(request: Request):
 def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Request):
     try:
         if not youtube_service.is_authenticated():
-            return RedirectResponse(url="/?error=Not authenticated. Please authenticate first.")
+            return {"status": "error", "detail": "Not authenticated. Please authenticate first."}, status.HTTP_401_UNAUTHORIZED
 
         # Create the YouTube stream
-        new_stream = youtube_service.create_scheduled_stream(stream_details)
-        stream_id = new_stream['broadcast_id']
-        
-        # Cancel any existing timer for this stream (just in case)
-        if stream_id in stream_timers:
-            stream_timers[stream_id].cancel()
-        
-        # Create a new stream timer for this specific stream
-        stream_timer = StreamTimer(
-            config=cfg,
-            stream_token=new_stream['stream_key'],
-            stream_id=stream_id,
-            start_time=stream_details.start_time,
-            end_time=stream_details.end_time
-        )
-        
-        # Store the timer in our dictionary
-        stream_timers[stream_id] = stream_timer
-        
-        # Initially mark as scheduled
-        stream_statuses[stream_id] = "scheduled"
-        
-        # Schedule the stream
-        stream_timer.schedule_stream()
+        try:
+            new_stream = youtube_service.create_scheduled_stream(stream_details)
+            stream_id = new_stream['broadcast_id']
+            
+            # Cancel any existing timer for this stream (just in case)
+            if stream_id in stream_timers:
+                stream_timers[stream_id].cancel()
+            
+            # Create a new stream timer for this specific stream
+            stream_timer = StreamTimer(
+                config=cfg,
+                stream_token=new_stream['stream_key'],
+                stream_id=stream_id,
+                start_time=stream_details.start_time,
+                end_time=stream_details.end_time
+            )
+            
+            # Store the timer in our dictionary
+            stream_timers[stream_id] = stream_timer
+            
+            # Initially mark as scheduled
+            stream_statuses[stream_id] = "scheduled"
+            
+            # Schedule the stream
+            stream_timer.schedule_stream()
 
-        # Return success to the frontend
-        return {"status": "success", "message": "Stream scheduled successfully"}
+            # Return success to the frontend
+            return {"status": "success", "message": "Stream scheduled successfully"}
+            
+        except Exception as api_error:
+            # This will catch YouTube API errors
+            error_message = f"Error creating stream: {str(api_error)}"
+            print(error_message)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_message
+            )
 
+    except HTTPException as he:
+        # Re-raise HTTP exceptions so FastAPI handles them properly
+        raise
     except Exception as e:
-        error_message = f"Error creating stream: {str(e)}"
-        return {"status": "error", "detail": error_message}
+        # Catch other unexpected errors
+        error_message = f"Unexpected error creating stream: {str(e)}"
+        print(error_message)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_message
+        )
 
 
 @youtube_router.delete("/delete/{stream_id}")
