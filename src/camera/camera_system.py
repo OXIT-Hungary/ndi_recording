@@ -134,10 +134,10 @@ class CameraSystem:
                 )
 
                 if len(boxes):
-                    img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
-                    img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
+                    # img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
+                    # img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
                     proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
-                    img_bev = self.bev.draw(detections=proj_boxes, scale=15)
+                    # img_bev = self.bev.draw(detections=proj_boxes, scale=15)
 
                     proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
@@ -146,23 +146,23 @@ class CameraSystem:
                     if cluster_center is None:
                         continue
 
-                    img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
-                    cv2.circle(
-                        img_bev,
-                        center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
-                        radius=3,
-                        color=(0, 0, 255),
-                        thickness=-1,
-                    )
+                    # img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
+                    # cv2.circle(
+                    #     img_bev,
+                    #     center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
+                    #     radius=3,
+                    #     color=(0, 0, 255),
+                    #     thickness=-1,
+                    # )
 
-                    new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
-                    new_image[
-                        :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
-                    ] = img_bev
+                    # new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
+                    # new_image[
+                    #     :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
+                    # ] = img_bev
 
-                    #img_out = np.concatenate((img_pano, new_image), axis=0)
-                    #cv2.imshow('asd', img_out)
-                    #cv2.waitKey(0)
+                    # img_out = np.concatenate((img_pano, new_image), axis=0)
+                    # cv2.imshow('asd', img_out)
+                    # cv2.waitKey(0)
 
                     if cluster_center is not None:
                         cluster_center[0] = max(
@@ -185,36 +185,6 @@ class CameraSystem:
 
         except KeyboardInterrupt:
             logger.info("Keyboard Interrupt received.")
-
-    def _process_buckets(self, boxes, labels, scores, bucket_width):
-        """ """
-
-        buckets = {0: 0, 1: 0, 2: 0}
-        bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
-        centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
-
-        for center_x in centers_x:
-            bucket_idx = center_x // bucket_width
-            buckets[bucket_idx] += 1
-
-        return max(buckets, key=lambda k: buckets[k])
-
-    def _update_frequency(self, window, freq_counter, bucket, max_window_size=10):
-        """
-        Update the sliding window and frequency counter to track the most frequent bucket.
-        """
-
-        window.append(bucket)
-        freq_counter[bucket] += 1
-
-        if len(window) > max_window_size:
-            oldest = window.popleft()
-            freq_counter[oldest] -= 1
-            if freq_counter[oldest] == 0:
-                del freq_counter[oldest]
-
-        # Return the most common bucket
-        return freq_counter.most_common(1)[0][0]
 
     def _transform(self, frame: np.ndarray) -> np.ndarray:
         frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
