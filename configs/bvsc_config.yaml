@@ -14,11 +14,11 @@ camera_system:
       src: ndi
       fps: 30
       presets:
-        left: [0xfe86, 0xfe86]
+        left: [65286, 65158]
         center: [0x1000c, 0xfe64]
-        right: [0xfe8d, 0xfe86]
+        right: [65777, 65158]
       speed: 0x10
-      stream: True
+      stream: False
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
@@ -26,9 +26,9 @@ camera_system:
       src: ndi
       fps: 30
       presets:
-        left: [0xfdb1, 0xfe7d]
+        left: [65051, 65149]
         center: [0x1002a, 0xfe4d]
-        right: [0x1024f, 0xfe77]
+        right: [66018, 65143]
       speed: 0x10
     pano:
       name: Vivotek-MS9321-EHV-V2

@@ -31,7 +31,7 @@ def send_inquiry(ip, command, timeout: float = 10.0, port: int = 52381):
             return response
         except TimeoutError as e:
             logger.error("No response from camera. Camera IP: %s", ip)
-            raise TimeoutError("[ERROR] No response from camera. Camera IP: %s", ip) from e
+            #raise TimeoutError("[ERROR] No response from camera. Camera IP: %s", ip) from e
         except Exception as e:
             logger.error("Error: %s", e)
             raise Exception(f"Error: {e}") from e

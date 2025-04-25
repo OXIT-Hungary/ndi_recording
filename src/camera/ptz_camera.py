@@ -354,17 +354,20 @@ class PTZCamera(Camera, multiprocessing.Process):
 
     def _move_thread(self) -> None:
         while not self.event_stop.is_set():
-            self._event_move.wait()
-            print('running')
-            if self.event_stop.is_set():
-                break
+            try:
+                self._event_move.wait()
 
-            if not self.queue_move.empty():
-                pan_pos, tilt_pos = self.queue_move.get()
+                if self.event_stop.is_set():
+                    break
 
-                self.move_with_easing(pan_pos=pan_pos, tilt_pos=tilt_pos, steps=20, max_speed=0x05)
+                if not self.queue_move.empty():
+                    pan_pos, tilt_pos = self.queue_move.get()
 
-            self._event_move.clear()
+                    self.move_with_easing(pan_pos=pan_pos, tilt_pos=65158, steps=20, max_speed=0x05)
+
+                self._event_move.clear()
+            except Exception as e:
+                print(e)
 
 
 class Avonic_CM93_NDI(PTZCamera):

@@ -142,6 +142,10 @@ class CameraSystem:
                     proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
                     cluster_center, cluster_points = get_cluster_centroid(points=proj_players, eps=3, min_samples=3)
+
+                    if cluster_center is None:
+                        continue
+
                     img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
                     cv2.circle(
                         img_bev,
@@ -156,9 +160,9 @@ class CameraSystem:
                         :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
                     ] = img_bev
 
-                    img_out = np.concatenate((img_pano, new_image), axis=0)
-                    cv2.imshow('asd', img_out)
-                    cv2.waitKey(0)
+                    #img_out = np.concatenate((img_pano, new_image), axis=0)
+                    #cv2.imshow('asd', img_out)
+                    #cv2.waitKey(0)
 
                     if cluster_center is not None:
                         cluster_center[0] = max(
@@ -173,7 +177,7 @@ class CameraSystem:
                                 pos_world = cluster_center[0] if name == 'ptz1' else -cluster_center[0]
                                 pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
 
-                                if not self.camera_queues[name].full():
+                                if not self.camera_events[name].is_set():
                                     self.camera_queues[name].put((pan_pos, 0))
                                     self.camera_events[name].set()
 
