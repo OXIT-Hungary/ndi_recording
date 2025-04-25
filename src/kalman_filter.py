@@ -5,10 +5,9 @@ from scipy.spatial import distance
 
 
 class Track:
-    def __init__(self, track_id, initial_pos):
-        self.track_id = track_id
+    def __init__(self, pos):
         self.kf = KalmanFilter(dim_x=4, dim_z=2)
-        self.kf.x = np.array([initial_pos[0], initial_pos[1], 0.0, 0.0])  # [x, y, vx, vy]
+        self.kf.x = np.array([pos[0], pos[1], 0.0, 0.0])  # [x, y, vx, vy]
         self.kf.F = np.array([[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]])
         self.kf.H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]])
         self.kf.R *= 0.5  # Measurement noise
@@ -25,14 +24,6 @@ class Track:
         self.kf.update(pos)
         self.hits += 1
         self.time_since_update = 0
-
-    def get_velocity(self):
-        return [self.kf.x[2], self.kf.x[3]]
-
-    def set_velocity(self, avg_velocity):
-        # if self.kf.x[2] > avg_velocity or self.kf.x[3] > avg_velocity:
-        self.kf.x[2] = avg_velocity
-        self.kf.x[3] = avg_velocity
 
 
 class Tracker:
@@ -84,8 +75,3 @@ class Tracker:
 
         # Return confirmed tracks
         return [t for t in self.tracks if t.hits >= self.min_hits]
-
-    def avg_velocity_update(self, velocity):
-        self.velocity_sum += np.average(velocity)
-        self.velocity_num += 1
-        self.avg_velocity = self.velocity_sum / self.velocity_num

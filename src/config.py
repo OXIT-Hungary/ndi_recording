@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta
 
 import yaml
+import numpy as np
 
 
 class ScheduleConfig:
@@ -47,6 +48,7 @@ class PTZConfig:
         self.name = config_dict.get("name", None)
         self.enable = config_dict.get("enable", False)
         self.ip = config_dict.get("ip", None)
+        self.visca_port = config_dict.get("visca_port", 1259)
         self.resolution = config_dict.get("resolution", [1920, 1080])
         self.codec = config_dict.get("codec", "h264_nvenc")
         self.ext = config_dict.get("ext", ".mp4")
@@ -78,16 +80,23 @@ class CameraSystemConfig:
                 self.ptz_cameras[cam_name] = PTZConfig(cam_config)
 
         self.pano_onnx = config_dict.get("pano_onnx", None)
+        self.track_threshold = config_dict.get("track_threshold", 1.0)
+
+
+class BEVConfig:
+    def __init__(self, config_dict):
+        self.points = {key: np.array(val) for key, val in config_dict.get("points", {}).items()}
+        self.court_size = np.array(config_dict.get("court_size", [25, 20]))
+        self.court_padding = np.array(config_dict.get("court_padding", [2, 1]))
 
 
 class Config:
     def __init__(self, config_dict):
         self.schedule = ScheduleConfig(config_dict=config_dict.get("schedule", {}))
         self.camera_system = CameraSystemConfig(config_dict=config_dict.get("camera_system", {}))
-        self.video_writer = config_dict.get("video_writer", {})
+        self.bev = BEVConfig(config_dict=config_dict.get("bev", {}))
 
-        self.out_path = f"{config_dict.get('out_path', './output')}/{datetime.now().strftime('%Y%m%d_%H%M')}"
-        os.makedirs(self.out_path, exist_ok=True)
+        self.out_path = f"{config_dict.get('out_path', './output')}"
 
 
 def load_config(file_path: str):

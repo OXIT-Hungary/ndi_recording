@@ -29,6 +29,22 @@ RUN apt-get update -qq --fix-missing && \
         python3.10 python3.10-venv python3.10-distutils && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# for docker visualization; todo: check it
+RUN apt-get update && apt-get install -y \
+    cmake \
+    build-essential \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxrender1 \
+    libxext6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcb-render0 \
+    libxcb-shape0 \
+    libxcb-xfixes0 
+
+
 # Build FFmpeg with NVIDIA GPU support
 WORKDIR /tmp/ffmpeg-build
 RUN wget -q https://github.com/FFmpeg/nv-codec-headers/releases/download/n11.0.10.3/nv-codec-headers-11.0.10.3.tar.gz && \

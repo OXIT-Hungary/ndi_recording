@@ -2,6 +2,8 @@ import multiprocessing
 import queue
 import threading
 import time
+import os
+from datetime import datetime
 
 import cv2
 import NDIlib as ndi
@@ -11,55 +13,66 @@ import onnxruntime
 import src.camera.ptz_camera as ptz_camera
 from src.bev import BEV
 from src.camera.pano_camera import PanoCamrera
-from src.config import CameraSystemConfig
-from src.player_tracker import Tracker
+from src.config import Config
 from src.utils.tmp import get_cluster_centroid
+import src.utils.visualize as visualize
 
 
 class CameraSystem:
     """Camera System Class which incorporates and handles PTZ and Panorama cameras."""
 
-    def __init__(self, config: CameraSystemConfig, out_path: str, stream_token=None) -> None:
-        self.config = config
-        self.out_path = out_path
+    def __init__(self, config: Config, stream_token: str = None) -> None:
+        self.config = config.camera_system
+        self.out_path = f"{config.out_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        os.makedirs(self.out_path, exist_ok=True)
+
+        self.new_centroid = np.array([0, 0])
 
         self.manager = multiprocessing.Manager()
         self.event_stop = self.manager.Event()
         self.pano_queue = self.manager.Queue(maxsize=5)
 
-        self.bev = BEV(config)
+        self.bev = BEV(config.bev)
 
-        # self.tracker = Tracker(max_age=25, min_hits=3)  # TODO: Refactor and implement bev tracking
-
-        self.centroid = None
+        self.centroid = np.array([0, 0])
 
         self.cameras = {}
+        self.camera_queues = {}
+        self.camera_events = {}
 
-        if config.pano_camera.enable:
+        if self.config.pano_camera.enable:
             self.cameras['pano'] = PanoCamrera(
-                config=config.pano_camera,
+                config=self.config.pano_camera,
                 queue=self.pano_queue,
                 event_stop=self.event_stop,
-                save=True,
-                out_path=out_path,
+                save=False,
+                out_path=self.out_path,
             )
 
-        for name, cfg in config.ptz_cameras.items():
+        for name, cfg in self.config.ptz_cameras.items():
             if cfg.enable:
                 if hasattr(ptz_camera, cfg.name):
                     cls = getattr(ptz_camera, cfg.name)
+                    self.camera_queues[name] = self.manager.Queue(maxsize=1)
+                    self.camera_events[name] = self.manager.Event()
                     self.cameras[name] = cls(
-                        name=name, config=cfg, event_stop=self.event_stop, out_path=out_path, stream_token=stream_token
+                        name=name,
+                        config=cfg,
+                        event_stop=self.event_stop,
+                        out_path=self.out_path,
+                        queue_move=self.camera_queues[name],
+                        event_move=self.camera_events[name],
+                        stream_token=stream_token,
                     )
+
                 else:
                     raise ValueError(f"Class '{cfg.name}' not found in PTZCamera.py.")
 
-        self.position = 1
         self.thread_detect_and_track = None
 
         # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
         self.onnx_session = onnxruntime.InferenceSession(
-            config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+            self.config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
 
     def _init_ndi(self) -> list:
@@ -102,7 +115,6 @@ class CameraSystem:
 
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 10  # 10 fps
-        dist_threshold = 20
 
         try:
             while not self.event_stop.is_set():
@@ -121,64 +133,58 @@ class CameraSystem:
                     },
                 )
 
-                proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
-                proj_players = proj_boxes[(labels == 2) & (scores > 0.6)]
+                if len(boxes):
+                    # img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
+                    # img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
+                    proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
+                    # img_bev = self.bev.draw(detections=proj_boxes, scale=15)
 
-                gravity_center = get_cluster_centroid(proj_players)
-                new_centroid = (
-                    self._move_centroid_smoothly(self.centroid, gravity_center)
-                    if self.centroid is not None and gravity_center is not None
-                    else gravity_center
-                )
+                    proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
-                if new_centroid is not None:
-                    new_centroid[0] = max(min(new_centroid[0], dist_threshold), -dist_threshold)
+                    cluster_center, cluster_points = get_cluster_centroid(points=proj_players, eps=3, min_samples=3)
 
-                    if self.centroid is None:
-                        self.centroid = new_centroid
-                    elif abs(new_centroid[0] - self.centroid[0]) > 1:
-                        self.centroid = new_centroid
+                    if cluster_center is None:
+                        continue
 
-                    for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                        pos = new_centroid[0] if name == 'ptz1' else -new_centroid[0]
-                        pan_hex, tilt_hex = self.bev.get_pan_from_bev(pos, ptz_cam.presets)
+                    # img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
+                    # cv2.circle(
+                    #     img_bev,
+                    #     center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
+                    #     radius=3,
+                    #     color=(0, 0, 255),
+                    #     thickness=-1,
+                    # )
 
-                        ptz_camera.move(ip=ptz_cam.ip, pan_pos=int(pan_hex, 16), tilt_pos=int(tilt_hex, 16), speed=0x1)
+                    # new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
+                    # new_image[
+                    #     :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
+                    # ] = img_bev
+
+                    # img_out = np.concatenate((img_pano, new_image), axis=0)
+                    # cv2.imshow('asd', img_out)
+                    # cv2.waitKey(0)
+
+                    if cluster_center is not None:
+                        cluster_center[0] = max(
+                            min(cluster_center[0], self.bev.config.court_size[0] / 2),
+                            -self.bev.config.court_size[0] / 2,
+                        )
+
+                        if abs(cluster_center[0] - self.centroid[0]) > self.config.track_threshold:
+                            self.centroid = cluster_center
+
+                            for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
+                                pos_world = cluster_center[0] if name == 'ptz1' else -cluster_center[0]
+                                pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
+
+                                if not self.camera_events[name].is_set():
+                                    self.camera_queues[name].put((pan_pos, 0))
+                                    self.camera_events[name].set()
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
         except KeyboardInterrupt:
             logger.info("Keyboard Interrupt received.")
-
-    def _process_buckets(self, boxes, labels, scores, bucket_width):
-        """ """
-
-        buckets = {0: 0, 1: 0, 2: 0}
-        bboxes_player = boxes[(labels == 2) & (scores > 0.5)]
-        centers_x = (bboxes_player[:, 0] + bboxes_player[:, 2]) / 2
-
-        for center_x in centers_x:
-            bucket_idx = center_x // bucket_width
-            buckets[bucket_idx] += 1
-
-        return max(buckets, key=lambda k: buckets[k])
-
-    def _update_frequency(self, window, freq_counter, bucket, max_window_size=10):
-        """
-        Update the sliding window and frequency counter to track the most frequent bucket.
-        """
-
-        window.append(bucket)
-        freq_counter[bucket] += 1
-
-        if len(window) > max_window_size:
-            oldest = window.popleft()
-            freq_counter[oldest] -= 1
-            if freq_counter[oldest] == 0:
-                del freq_counter[oldest]
-
-        # Return the most common bucket
-        return freq_counter.most_common(1)[0][0]
 
     def _transform(self, frame: np.ndarray) -> np.ndarray:
         frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
@@ -190,8 +196,10 @@ class CameraSystem:
         dt = (t - times[0]) / (times[1] - times[0])
         return np.array([dt * dx + points[0][0], dt * dy + points[0][1]])
 
-    def _move_centroid_smoothly(self, current_pos, new_pos):
-        return self._lerp(10, [1, 100], [current_pos, new_pos])
+    def _move_centroid_smoothly(self, current_pos, new_pos, lerp_step_num, lerp_step_used):
+        return self._lerp(
+            lerp_step_used, [1, lerp_step_num], [current_pos, new_pos]
+        )  # _lerp(returned_step, steps_interval, two_positions)
 
     def __del__(self) -> None:
         pass

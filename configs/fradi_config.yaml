@@ -11,6 +11,7 @@ camera_system:
       name: Avonic_CM93_NDI
       enable: True
       ip: 192.168.16.11
+      visca_port: 1259
       src: ndi
       fps: 30
       presets:
@@ -23,6 +24,7 @@ camera_system:
       name: Avonic_CM93_NDI
       enable: True
       ip: 192.168.16.12
+      visca_port: 1259
       src: ndi
       fps: 30
       presets:
@@ -41,4 +43,9 @@ camera_system:
       fps: 20
   
   pano_onnx: ./models/rtdetrv2_pano.onnx
- 
+
+bev:
+  points:
+    world: [[-25, 10], [25, 10], [-25, -10], [25, -10]]
+    image: [[549, 103], [2315, 71], [73, 470], [2746, 407]]
+  court_size: [25, 20]

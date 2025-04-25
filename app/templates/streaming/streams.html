@@ -7,12 +7,14 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .container {
+            padding: 20px;
+            margin-top: 30px;
+            margin-bottom: 30px;
             max-width: 1000px;
-            margin-top: 50px;
         }
         .stream-card {
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            box-shadow: 0 6px 10px rgba(0,0,0,0.15);
         }
         .no-streams {
             padding: 20px;
@@ -46,6 +48,19 @@
         #scheduleSubmitButton .spinner-border {
             margin-right: 5px;
         }
+        /* Status badge styling */
+        .badge.bg-ended {
+            background-color: #6c757d !important;
+        }
+        .badge.bg-live {
+            background-color: #198754 !important;
+        }
+        .badge.bg-scheduled {
+            background-color: #0d6efd !important;
+        }
+        .badge.bg-error {
+            background-color: #dc3545 !important;
+        }
     </style>
 </head>
 <body>
@@ -69,7 +84,21 @@
                     <div class="card stream-card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">{{ stream.title }}</h5>
-                            <span class="badge {% if stream.status == 'ready' %}bg-success{% elif stream.status == 'created' %}bg-warning{% else %}bg-info{% endif %}">{{ stream.status }}</span>
+                            {% if stream.status == 'ended' %}
+                                <span class="badge bg-ended">Ended</span>
+                            {% elif stream.status == 'live' %}
+                                <span class="badge bg-live">Live</span>
+                            {% elif stream.status == 'scheduled' %}
+                                <span class="badge bg-scheduled">Scheduled</span>
+                            {% elif stream.status == 'error' %}
+                                <span class="badge bg-error">Error</span>
+                            {% elif stream.status == 'ready' %}
+                                <span class="badge bg-success">Ready</span>
+                            {% elif stream.status == 'created' %}
+                                <span class="badge bg-warning">Created</span>
+                            {% else %}
+                                <span class="badge bg-info">{{ stream.status }}</span>
+                            {% endif %}
                         </div>
                         <div class="card-body">
                             <div class="schedule-info">
@@ -162,6 +191,11 @@
     </div>
 
     <script>
+        // Auto-refresh the page every 60 seconds to update stream statuses
+        setTimeout(function() {
+            window.location.reload();
+        }, 60000);
+
         // Handle stream deletion
         document.querySelectorAll('.delete-stream').forEach(button => {
             button.addEventListener('click', async (e) => {
@@ -195,9 +229,29 @@
             });
         });
 
-        // Handle form submission
         document.getElementById('scheduleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+
+            const startTimeInput = document.getElementById('start_time');
+            const endTimeInput = document.getElementById('end_time');
+
+            const startTime = new Date(startTimeInput.value);
+            const endTime = new Date(endTimeInput.value);
+
+            // *** Added validation logic here ***
+            if (endTime <= startTime) {
+                alert('End time must be after start time');
+                // Restore button state on validation error
+                const submitButton = document.getElementById('scheduleSubmitButton');
+                const spinner = document.getElementById('scheduleSpinner');
+                const deleteButtons = document.querySelectorAll('.delete-stream');
+                submitButton.disabled = false;
+                spinner.classList.add('d-none');
+                deleteButtons.forEach(button => button.disabled = false);
+                return; // Prevent form submission
+            }
+            // *** End of added validation logic ***
+
 
             const scheduleForm = e.target;
             const submitButton = document.getElementById('scheduleSubmitButton');
@@ -211,28 +265,15 @@
             deleteButtons.forEach(button => button.disabled = true);
             // --- End Loading State ---
 
-
             const formData = new FormData(scheduleForm);
-            const startTime = new Date(formData.get('start_time'));
-            const endTime = new Date(formData.get('end_time'));
 
-            // Validate end time is after start time
-            if (endTime <= startTime) {
-                alert('End time must be after start time');
-                // --- Restore Button State on Validation Error ---
-                submitButton.disabled = false;
-                spinner.classList.add('d-none');
-                deleteButtons.forEach(button => button.disabled = false);
-                // --- End Restore ---
-                return;
-            }
 
             const data = {
                 title: formData.get('title'),
                 description: formData.get('description'),
                 privacy_status: formData.get('privacy_status'),
-                start_time: startTime.toISOString(),
-                end_time: endTime.toISOString(),
+                start_time: startTime.toISOString(), // Use validated startTime
+                end_time: endTime.toISOString(), // Use validated endTime
                 category: formData.get('category'),
             };
 
@@ -245,13 +286,16 @@
                     body: JSON.stringify(data)
                 });
 
-                if (response.ok) {
+                const responseData = await response.json();
+
+                if (response.ok && responseData.status === 'success') {
                     alert('Stream scheduled successfully. It will automatically start and end at the specified times.');
                     location.reload(); // Reload on success
                     // No need to manually re-enable buttons here as the page reloads
                 } else {
-                    const errorData = await response.json();
-                    alert(`Error: ${errorData.detail || 'Unknown error'}`);
+                    // Handle both response.ok==false and responseData.status=='error'
+                    const errorMessage = responseData.detail || responseData.message || 'Unknown error occurred';
+                    alert(`Error: ${errorMessage}`);
                     // --- Restore Button State on API Error ---
                     submitButton.disabled = false;
                     spinner.classList.add('d-none');
