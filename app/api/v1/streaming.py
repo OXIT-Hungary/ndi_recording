@@ -31,7 +31,8 @@ def init_db():
     cursor = conn.cursor()
 
     # Create table for stream schedules
-    cursor.execute("""
+    cursor.execute(
+        """
     CREATE TABLE IF NOT EXISTS stream_schedules (
         stream_id TEXT PRIMARY KEY,
         stream_token TEXT NOT NULL,
@@ -39,7 +40,8 @@ def init_db():
         end_time TEXT NOT NULL,
         status TEXT NOT NULL
     )
-    """)
+    """
+    )
 
     conn.commit()
     conn.close()
@@ -51,11 +53,14 @@ def save_stream_schedule(stream_id, stream_token, start_time, end_time, status):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
     INSERT OR REPLACE INTO stream_schedules 
     (stream_id, stream_token, start_time, end_time, status) 
     VALUES (?, ?, ?, ?, ?)
-    """, (stream_id, stream_token, start_time.isoformat(), end_time.isoformat(), status))
+    """,
+        (stream_id, stream_token, start_time.isoformat(), end_time.isoformat(), status),
+    )
 
     conn.commit()
     conn.close()
@@ -77,9 +82,12 @@ def update_stream_status(stream_id, status):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
     UPDATE stream_schedules SET status = ? WHERE stream_id = ?
-    """, (status, stream_id))
+    """,
+        (status, stream_id),
+    )
 
     conn.commit()
     conn.close()
@@ -101,7 +109,7 @@ def load_stream_schedules():
             'stream_token': row[1],
             'start_time': datetime.datetime.fromisoformat(row[2]),
             'end_time': datetime.datetime.fromisoformat(row[3]),
-            'status': row[4]
+            'status': row[4],
         }
         for row in schedules
     ]
@@ -167,10 +175,7 @@ class StreamTimer:
         try:
             if not self.running:
                 # Initialize camera system only when starting (lazy initialization)
-                self.camera_sys = camera_sys.CameraSystem(
-                    config=self.config,
-                    stream_token=self.stream_token
-                )
+                self.camera_sys = camera_sys.CameraSystem(config=self.config, stream_token=self.stream_token)
                 self.camera_sys.start()
                 self.running = True
                 # Update status
@@ -238,7 +243,7 @@ def restore_scheduled_streams():
                 stream_token=schedule['stream_token'],
                 stream_id=stream_id,
                 start_time=schedule['start_time'],
-                end_time=schedule['end_time']
+                end_time=schedule['end_time'],
             )
             stream_timers[stream_id] = stream_timer
             stream_statuses[stream_id] = schedule['status']
@@ -290,6 +295,11 @@ def auth_callback(request: Request, code: str = Query(None), error: str = Query(
 @youtube_router.get("/logout")
 def logout():
     try:
+        global stream_timer
+        if stream_timer:
+            stream_timer.cancel()
+            stream_timer = None
+
         youtube_service.clear_credentials()
         return RedirectResponse(url="/?message=Successfully logged out")
     except Exception as e:
@@ -320,15 +330,11 @@ def get_scheduled_streams(request: Request):
 
                     # Parse times from string format to datetime objects with UTC timezone
                     try:
-                        start_time = datetime.datetime.strptime(
-                            stream['scheduled_start_time'], "%Y-%m-%d %H:%M"
-                        )
+                        start_time = datetime.datetime.strptime(stream['scheduled_start_time'], "%Y-%m-%d %H:%M")
                         # Adjust timezone - assuming the times are in local time and need to be converted to UTC
                         start_time = start_time.replace(tzinfo=datetime.timezone.utc) - datetime.timedelta(hours=2)
 
-                        end_time = datetime.datetime.strptime(
-                            stream['scheduled_end_time'], "%Y-%m-%d %H:%M"
-                        )
+                        end_time = datetime.datetime.strptime(stream['scheduled_end_time'], "%Y-%m-%d %H:%M")
                         # Adjust timezone - assuming the times are in local time and need to be converted to UTC
                         end_time = end_time.replace(tzinfo=datetime.timezone.utc) - datetime.timedelta(hours=2)
 
@@ -338,7 +344,7 @@ def get_scheduled_streams(request: Request):
                             stream_token=stream_details['stream_key'],
                             stream_id=stream_id,
                             start_time=start_time,
-                            end_time=end_time
+                            end_time=end_time,
                         )
                         stream_timers[stream_id] = stream_timer
                         stream_timer.schedule_stream()
@@ -349,7 +355,7 @@ def get_scheduled_streams(request: Request):
                             stream_token=stream_details['stream_key'],
                             start_time=start_time,
                             end_time=end_time,
-                            status=stream_statuses[stream_id]
+                            status=stream_statuses[stream_id],
                         )
 
                         print(f"Set up timer for existing stream {stream_id}")
@@ -374,8 +380,10 @@ def get_scheduled_streams(request: Request):
 def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Request):
     try:
         if not youtube_service.is_authenticated():
-            return {"status": "error",
-                    "detail": "Not authenticated. Please authenticate first."}, status.HTTP_401_UNAUTHORIZED
+            return {
+                "status": "error",
+                "detail": "Not authenticated. Please authenticate first.",
+            }, status.HTTP_401_UNAUTHORIZED
 
         # Create the YouTube stream
         try:
@@ -392,7 +400,7 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
                 stream_token=new_stream['stream_key'],
                 stream_id=stream_id,
                 start_time=stream_details.start_time,
-                end_time=stream_details.end_time
+                end_time=stream_details.end_time,
             )
 
             # Store the timer in our dictionary
@@ -410,7 +418,7 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
                 stream_token=new_stream['stream_key'],
                 start_time=stream_details.start_time,
                 end_time=stream_details.end_time,
-                status="scheduled"
+                status="scheduled",
             )
 
             # Return success to the frontend
@@ -420,10 +428,7 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
             # This will catch YouTube API errors
             error_message = f"Error creating stream: {str(api_error)}"
             print(error_message)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error_message
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
 
     except HTTPException as he:
         # Re-raise HTTP exceptions so FastAPI handles them properly
@@ -432,10 +437,7 @@ def create_scheduled_streams(stream_details: YoutubeStreamSchedule, request: Req
         # Catch other unexpected errors
         error_message = f"Unexpected error creating stream: {str(e)}"
         print(error_message)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=error_message
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_message)
 
 
 @youtube_router.delete("/delete/{stream_id}")
