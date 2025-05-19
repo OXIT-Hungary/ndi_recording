@@ -63,9 +63,9 @@ class PanoramaConfig:
     def __init__(self, config_dict):
         self.enable = config_dict.get("enable", False)
         self.src = config_dict.get("src")
-        self.frame_size = config_dict.get("frame_size", [2304, 832])
         self.crop = config_dict.get("crop", None)
         self.fps = config_dict.get("fps", 15)
+        self.save = config_dict.get("save", True)
 
 
 class CameraSystemConfig:

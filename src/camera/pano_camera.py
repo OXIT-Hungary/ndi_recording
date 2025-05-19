@@ -75,7 +75,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-f", "rawvideo",
                     "-pix_fmt", "bgr24",
                     "-s", f"{width}x{height}",
-                    "-r", str(20),
+                    "-r", str(self.config.fps),
                     "-hwaccel", "cuda",
                     "-hwaccel_output_format", "cuda",
                     "-i", "pipe:",

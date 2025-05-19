@@ -31,7 +31,7 @@ def send_inquiry(ip, command, timeout: float = 10.0, port: int = 52381):
             return response
         except TimeoutError as e:
             logger.error("No response from camera. Camera IP: %s", ip)
-            #raise TimeoutError("[ERROR] No response from camera. Camera IP: %s", ip) from e
+            # raise TimeoutError("[ERROR] No response from camera. Camera IP: %s", ip) from e
         except Exception as e:
             logger.error("Error: %s", e)
             raise Exception(f"Error: {e}") from e
@@ -71,7 +71,7 @@ def get_camera_pan_tilt(ip, port: int = 52381) -> tuple[int, int] | None:
 
     response = send_inquiry(ip, command=bytes.fromhex("81 09 06 12 FF"), port=port)
 
-    if len(response) >= 11 and response[1] == 0x50:  # 0x50 means successful reply
+    if response is not None and len(response) >= 11 and response[1] == 0x50:  # 0x50 means successful reply
         # Extract pan and tilt position values
         pan_position = (response[2] << 12) | (response[3] << 8) | (response[4] << 4) | response[5]
         tilt_position = (response[6] << 12) | (response[7] << 8) | (response[8] << 4) | response[9]
@@ -81,4 +81,4 @@ def get_camera_pan_tilt(ip, port: int = 52381) -> tuple[int, int] | None:
 
         return pan_position, tilt_position
     else:
-        return None
+        return None, None

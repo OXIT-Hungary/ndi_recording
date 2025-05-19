@@ -38,9 +38,9 @@ camera_system:
       ip: 192.168.16.13
       # src: rtsp
       src: rtsp://192.168.16.13:554/media2/stream.sdp?profile=Profile200
-      frame_size: [4416, 1600]
       crop: [530, 850, 1120, 3660] # (top_y, top_x, bottom_y, bottom_x)
       fps: 20
+      save: True
   
   pano_onnx: ./models/rtdetrv2_pano.onnx
 

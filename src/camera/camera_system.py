@@ -45,7 +45,7 @@ class CameraSystem:
                 config=self.config.pano_camera,
                 queue=self.pano_queue,
                 event_stop=self.event_stop,
-                save=False,
+                save=self.config.pano_camera.save,
                 out_path=self.out_path,
             )
 
