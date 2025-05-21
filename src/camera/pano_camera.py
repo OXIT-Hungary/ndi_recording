@@ -111,11 +111,13 @@ class PanoCamrera(Camera, multiprocessing.Process):
                         # TODO: Should we save empty image?
 
                     frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 3))
-                    frame = cv2.undistort(
-                        src=frame,
-                        cameraMatrix=self.config.camera_params['K'],
-                        distCoeffs=self.config.camera_params['dist'],
-                    )
+
+                    if self.config.camera_params:
+                        frame = cv2.undistort(
+                            src=frame,
+                            cameraMatrix=self.config.camera_params['K'],
+                            distCoeffs=self.config.camera_params['dist'],
+                        )
 
                     if self.config.crop:
                         frame = frame[y : y + height, x : x + width, :]
