@@ -4,6 +4,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from src.camera.camera import Camera
@@ -28,10 +29,17 @@ class PanoCamrera(Camera, multiprocessing.Process):
 
     def run(self) -> None:
 
-        x = self.config.crop[1]
-        y = self.config.crop[0]
-        width = self.config.crop[3] - x
-        height = self.config.crop[2] - y
+        if self.config.crop is not None:
+            x = self.config.crop[1]
+            y = self.config.crop[0]
+            width = self.config.crop[3] - self.config.crop[1]
+            height = self.config.crop[2] - self.config.crop[0]
+
+        else:
+            x = 0
+            y = 0
+            width = self.config.frame_size[0]
+            height = self.config.frame_size[1]
 
         ffmpeg = None
         video_cap = None
@@ -48,7 +56,9 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-pix_fmt", "bgr24",        # Pixel format compatible with OpenCV
                     "-vsync", "0",              # Avoid frame duplication
                     "-an",                      # No audio
-                    "-vf", f"fps={self.config.fps}, crop={width}:{height}:{x}:{y}",
+                    # "-vf", f"fps={self.config.fps}, crop={width}:{height}:{x}:{y}",
+                    # "-vf", f"fps={self.config.fps}, scale=1280:720",
+                    "-vf", f"fps={self.config.fps}",
                     "-fflags", "nobuffer",      # Reduce latency
                     "-probesize", "32",         # Reduce initial probe size
                     "-flags", "low_delay",      # Reduce decoding delay
@@ -60,8 +70,6 @@ class PanoCamrera(Camera, multiprocessing.Process):
             )
             # fmt: on
         elif 'mp4' in self.config.src:
-            import cv2
-
             video_cap = cv2.VideoCapture(self.config.src)
 
         ffmpeg_out = None
@@ -103,6 +111,15 @@ class PanoCamrera(Camera, multiprocessing.Process):
                         # TODO: Should we save empty image?
 
                     frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 3))
+                    frame = cv2.undistort(
+                        src=frame,
+                        cameraMatrix=self.config.camera_params['K'],
+                        distCoeffs=self.config.camera_params['dist'],
+                    )
+
+                    if self.config.crop:
+                        frame = frame[y : y + height, x : x + width, :]
+
                 elif video_cap is not None:
                     has_frame, frame = video_cap.read()
                     if not has_frame:

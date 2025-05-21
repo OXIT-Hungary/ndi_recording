@@ -161,10 +161,11 @@ class PTZCamera(Camera, multiprocessing.Process):
             print(f"PTZ Camera: {e}")
 
         finally:
-            if self.ffmpeg:
+            if self.ffmpeg is not None:
                 self.ffmpeg.stdin.flush()
                 self.ffmpeg.stdin.close()
-            if self.ffmpeg_stream:
+
+            if self.ffmpeg_stream is not None:
                 self.ffmpeg_stream.stdin.flush()
                 self.ffmpeg_stream.stdin.close()
 

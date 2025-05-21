@@ -16,9 +16,5 @@ def get_scheduler() -> Scheduler:
     return Scheduler.get_instance(_logger)
 
 
-def get_record_manager() -> RecordManager:
-    return RecordManager.get_instance(_logger)
-
-
 def get_api_logger() -> logging.Logger:
     return _logger
