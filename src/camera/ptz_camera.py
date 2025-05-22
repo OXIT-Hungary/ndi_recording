@@ -364,7 +364,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                 if not self.queue_move.empty():
                     pan_pos, tilt_pos = self.queue_move.get()
 
-                    self.move_with_easing(pan_pos=pan_pos, tilt_pos=65158, steps=20, max_speed=0x05)
+                    self.move_with_easing(pan_pos=pan_pos, tilt_pos=65158, steps=20, max_speed=self.config.speed)
 
                 self._event_move.clear()
             except Exception as e:

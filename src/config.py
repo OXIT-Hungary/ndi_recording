@@ -124,9 +124,9 @@ def load_config(file_path: str):
     try:
         with open(file_path, 'r') as file:
             return Config(yaml.safe_load(file) or {})
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         print(f"Error: File '{file_path}' not found.")
-        return Config({})
+        raise FileNotFoundError() from e
     except yaml.YAMLError as e:
         print(f"Error parsing YAML file: {e}")
-        return Config({})
+        raise RuntimeError() from e

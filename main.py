@@ -51,7 +51,9 @@ if __name__ == "__main__":
     multiprocessing.set_start_method("spawn")
 
     parser = argparse.ArgumentParser(prog="NDI Stream Recorder", description="Schedule a script to run based on time.")
-    parser.add_argument("--config", type=str, help="Config path.", required=False, default="./default_config.yaml")
+    parser.add_argument(
+        "--config", type=str, help="Config path.", required=False, default="./configs/default_config.yaml"
+    )
     parser.add_argument("--start_time", type=str, required=False, default=None)
     parser.add_argument("--end_time", type=str, required=False, default=None)
     parser.add_argument("--duration", type=str, required=False, default=None)
