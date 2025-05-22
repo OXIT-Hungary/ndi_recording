@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+import struct
 
 import NDIlib as ndi
 import numpy as np
@@ -145,6 +146,8 @@ class PTZCamera(Camera, multiprocessing.Process):
                 )
             # fmt: on
 
+            f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
+
             while not self.event_stop.is_set():
                 start_time = time.time()
                 frame = self.get_frame()
@@ -155,6 +158,9 @@ class PTZCamera(Camera, multiprocessing.Process):
                     if self.ffmpeg_stream is not None:
                         self.ffmpeg_stream.stdin.write(frame.tobytes())
                         self.ffmpeg_stream.stdin.flush()
+
+                    pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
+                    f.write(struct.pack('ii', pan, tilt))
 
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
@@ -168,6 +174,9 @@ class PTZCamera(Camera, multiprocessing.Process):
             if self.ffmpeg_stream is not None:
                 self.ffmpeg_stream.stdin.flush()
                 self.ffmpeg_stream.stdin.close()
+
+            if not f.closed:
+                f.close()
 
     def get_frame(self) -> np.ndarray | None:
         """ """
