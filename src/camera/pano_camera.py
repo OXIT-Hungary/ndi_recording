@@ -57,8 +57,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-vsync", "0",              # Avoid frame duplication
                     "-an",                      # No audio
                     # "-vf", f"fps={self.config.fps}, crop={width}:{height}:{x}:{y}",
-                    # "-vf", f"fps={self.config.fps}, scale=1280:720",
-                    "-vf", f"fps={self.config.fps}",
+                    "-vf", f"fps={self.config.fps}, scale={width}:{height}",
                     "-fflags", "nobuffer",      # Reduce latency
                     "-probesize", "32",         # Reduce initial probe size
                     "-flags", "low_delay",      # Reduce decoding delay

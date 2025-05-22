@@ -58,15 +58,13 @@ class PTZConfig:
         self.speed = config_dict.get("speed", 0x10)
         self.stream = config_dict.get("stream", False)
 
-        camera_params_path = config_dict.get("camera_params")
+        camera_params_path = config_dict.get("camera_params", None)
         if camera_params_path:
             with open(camera_params_path, 'rb') as f:
                 K, dist = np.load(f), np.load(f)
             self.camera_params = {'K': K, 'dist': dist}
         else:
             self.camera_params = None
-
-        self.camera_params = config_dict.get("camera_params")
 
 
 class PanoramaConfig:
@@ -77,7 +75,7 @@ class PanoramaConfig:
         self.fps = config_dict.get("fps", 15)
         self.frame_size = config_dict.get("frame_size", [4096, 1600])
 
-        camera_params_path = config_dict.get("camera_params")
+        camera_params_path = config_dict.get("camera_params", None)
         if camera_params_path:
             with open(camera_params_path, 'rb') as f:
                 K, dist = np.load(f), np.load(f)

@@ -40,10 +40,11 @@ camera_system:
       ip: 192.168.16.13
       # src: rtsp
       src: rtsp://192.168.16.13:554/media2/stream.sdp?profile=Profile200
-      frame_size: [4096, 1600]
-      crop: [0, 320, 1600, 4416] # (top_y, top_x, bottom_y, bottom_x)
+      frame_size: [4096, 1484]
+      # crop: [0, 320, 1600, 4416] # (top_y, top_x, bottom_y, bottom_x)
+      crop: null
       fps: 20
-      camera_params: ./camera_params/fradi/pano_params_bvsc.npy
+      camera_params: null
       save: True
   
   pano_onnx: ./models/rtdetrv2_pano.onnx

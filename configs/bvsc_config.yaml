@@ -40,7 +40,7 @@ camera_system:
       ip: 192.168.33.103
       #src: /home/bvsc-oxit/Videos/cropped.mp4
       src: rtsp://192.168.33.103:554/media2/stream.sdp?profile=Profile200
-      frame_size: [4096, 1600]
+      frame_size: [4096, 1484]
       crop: [530, 850, 1120, 3660] # (top_y, top_x, bottom_y, bottom_x)
       fps: 20
       camera_params: ./camera_params/bvsc/pano_params_bvsc.npy
