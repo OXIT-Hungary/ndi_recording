@@ -79,6 +79,7 @@ class PanoramaConfig:
         if camera_params_path:
             with open(camera_params_path, 'rb') as f:
                 K, dist = np.load(f), np.load(f)
+                K[:2] *= 0.92753623188
             self.camera_params = {'K': K, 'dist': dist}
         else:
             self.camera_params = None

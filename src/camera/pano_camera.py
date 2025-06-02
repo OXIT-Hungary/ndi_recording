@@ -35,12 +35,6 @@ class PanoCamrera(Camera, multiprocessing.Process):
             width = self.config.crop[3] - self.config.crop[1]
             height = self.config.crop[2] - self.config.crop[0]
 
-        else:
-            x = 0
-            y = 0
-            width = self.config.frame_size[0]
-            height = self.config.frame_size[1]
-
         ffmpeg = None
         video_cap = None
         if 'rtmp' in self.config.src or 'rtsp' in self.config.src:
@@ -57,7 +51,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-vsync", "0",              # Avoid frame duplication
                     "-an",                      # No audio
                     # "-vf", f"fps={self.config.fps}, crop={width}:{height}:{x}:{y}",
-                    "-vf", f"fps={self.config.fps}, scale={width}:{height}",
+                    "-vf", f"fps={self.config.fps}, scale={self.config.frame_size[0]}:{self.config.frame_size[1]}",
                     "-fflags", "nobuffer",      # Reduce latency
                     "-probesize", "32",         # Reduce initial probe size
                     "-flags", "low_delay",      # Reduce decoding delay
@@ -65,7 +59,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
-                bufsize=width*height*3 * 5,
+                bufsize=self.config.frame_size[0] * self.config.frame_size[1] * 3 * 5,
             )
             # fmt: on
         elif 'mp4' in self.config.src:
@@ -104,12 +98,14 @@ class PanoCamrera(Camera, multiprocessing.Process):
                 start_time = time.time()
 
                 if ffmpeg is not None:
-                    raw_frame = ffmpeg.stdout.read(width * height * 3)
+                    raw_frame = ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
                     if not raw_frame:
                         continue
                         # TODO: Should we save empty image?
 
-                    frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 3))
+                    frame = np.frombuffer(raw_frame, np.uint8).reshape(
+                        (self.config.frame_size[1], self.config.frame_size[0], 3)
+                    )
 
                     if self.config.camera_params:
                         frame = cv2.undistort(
@@ -120,6 +116,9 @@ class PanoCamrera(Camera, multiprocessing.Process):
 
                     if self.config.crop:
                         frame = frame[y : y + height, x : x + width, :]
+
+                        self.config.camera_params['K'][0, 2] -= x
+                        self.config.camera_params['K'][1, 2] -= y
 
                 elif video_cap is not None:
                     has_frame, frame = video_cap.read()
