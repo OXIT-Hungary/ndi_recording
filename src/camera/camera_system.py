@@ -16,6 +16,7 @@ from src.camera.pano_camera import PanoCamrera
 from src.config import Config
 from src.utils.tmp import get_cluster_centroid
 import src.utils.visualize as visualize
+import shared_manager as shared_manager
 
 
 class CameraSystem:
@@ -28,9 +29,9 @@ class CameraSystem:
 
         self.new_centroid = np.array([0, 0])
 
-        self.manager = multiprocessing.Manager()
-        self.event_stop = self.manager.Event()
-        self.pano_queue = self.manager.Queue(maxsize=5)
+        # self.manager = multiprocessing.Manager()
+        # self.event_stop = self.manager.Event()
+        # self.pano_queue = self.manager.Queue(maxsize=5)
 
         self.bev = BEV(config.bev)
 
@@ -43,8 +44,8 @@ class CameraSystem:
         if self.config.pano_camera.enable:
             self.cameras['pano'] = PanoCamrera(
                 config=self.config.pano_camera,
-                queue=self.pano_queue,
-                event_stop=self.event_stop,
+                queue=shared_manager.pano_queue,
+                event_stop=shared_manager.event_stop,
                 save=self.config.pano_camera.save,
                 out_path=self.out_path,
             )
@@ -58,7 +59,7 @@ class CameraSystem:
                     self.cameras[name] = cls(
                         name=name,
                         config=cfg,
-                        event_stop=self.event_stop,
+                        event_stop=shared_manager.event_stop,
                         out_path=self.out_path,
                         queue_move=self.camera_queues[name],
                         event_move=self.camera_events[name],
@@ -105,11 +106,14 @@ class CameraSystem:
         else:
             raise RuntimeError("No Panorama Camera.")
 
-    def stop(self) -> None:
-        self.event_stop.set()
+    def stop(self) -> bool:
+        """ Returns True if all threads were joined. """
+        shared_manager.event_stop.set()
 
         for cam in self.cameras.values():
             cam.join(timeout=5)
+
+        return all(not cam.is_alive() for cam in self.cameras.values())
 
         # self.thread_detect_and_track.join()
 
@@ -117,11 +121,11 @@ class CameraSystem:
         sleep_time = 1 / 10  # 10 fps
 
         try:
-            while not self.event_stop.is_set():
+            while not shared_manager.event_stop.is_set():
                 start_time = time.time()
 
                 try:
-                    frame = self.pano_queue.get(block=False)
+                    frame = shared_manager.pano_queue.get(block=False)
                 except queue.Empty:
                     continue
 

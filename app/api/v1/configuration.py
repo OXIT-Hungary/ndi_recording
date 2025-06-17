@@ -3,7 +3,8 @@ import os
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
-load_dotenv()
+# NOTE: as we are not using the youtube API we don't need this
+# load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -29,5 +30,5 @@ class Settings(BaseSettings):
         case_sensitive = True
         extra = "ignore"
 
-
-settings = Settings()
+# NOTE: as we are not using the youtube API we don't need this
+# settings = Settings()
