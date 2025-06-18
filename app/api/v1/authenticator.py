@@ -4,12 +4,13 @@ from typing import Optional
 from dotenv import load_dotenv
 import os
 
+
 # Load the .env.production file that stores data for the authenticator
 env_path = os.path.join(os.path.dirname(__file__), ".env.production")
 if load_dotenv(dotenv_path=env_path):
-    print("[INFO] Environment file loaded successfully!")
+    print(f"[INFO] Loaded environment from: {env_path}")
 else:
-    print("[ERROR] Environment file load failed!")
+    print(f"[WARNING] Failed to load environment from: {env_path}")
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 

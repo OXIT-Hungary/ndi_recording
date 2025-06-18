@@ -9,6 +9,7 @@ from src.camera.camera_system import CameraSystem
 from src.config import Config, load_config
 from src.utils.logger import setup_logger
 
+
 # p = psutil.Process(os.getpid())
 # p.nice(value=-12)
 

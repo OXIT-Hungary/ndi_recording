@@ -5,7 +5,7 @@ import datetime
 from typing import Optional
 from src.config import load_config, Config
 from .authenticator import validate_api_key
-import shared_manager as shared_manager
+from shared_manager import SharedManager, StreamStatus
 
 
 class ManualControlRouter:
@@ -13,7 +13,7 @@ class ManualControlRouter:
         self.camera_system: Optional[CameraSystem] = None
         self.config: Config = load_config(file_path='./configs/fradi_config.yaml')
 
-        shared_manager.stream_status.value = shared_manager.StreamStatus.UNDEFINED
+        SharedManager.stream_status.value = StreamStatus.UNDEFINED
 
     def get_router(self) -> APIRouter:
         router = APIRouter(prefix="/manual_control", tags=["Manual Control"], dependencies=[Depends(validate_api_key)])
@@ -30,7 +30,7 @@ class ManualControlRouter:
         @router.post("/stop-stream")
         def stop_stream() -> dict:
             try:
-                self.end_stream()
+                self.stop_stream()
                 return {"message": f"{datetime.datetime.now()}: Stream stopped successfully", "status": self.stream_status}
             
             except Exception as e:
@@ -38,32 +38,31 @@ class ManualControlRouter:
             
         @router.get("/get-stream-status")
         def get_stream_status() -> dict:
-            return {"status": shared_manager.stream_status.value}
+            return {"status": SharedManager.stream_status.value}
 
         return router
 
     def start_stream(self, config: Config, stream_token: str) -> None:
         """ Start the camera system and streaming """
 
-        if shared_manager.stream_status.value == shared_manager.StreamStatus.STARTING or shared_manager.stream_status.value == shared_manager.StreamStatus.STREAMING:
+        if SharedManager.stream_status.value == StreamStatus.STARTING or SharedManager.stream_status.value == StreamStatus.STREAMING:
             raise RuntimeError("Stream already started")
 
         try:
-            shared_manager.stream_status.value = shared_manager.StreamStatus.STARTING
+            SharedManager.stream_status.value = StreamStatus.STARTING
             # Initialize camera system only when starting (lazy initialization)
             self.camera_system = CameraSystem(config=config, stream_token=stream_token)
             self.camera_system.start()
         except Exception as e:
-            shared_manager.stream_status.value = shared_manager.StreamStatus.ERROR
+            SharedManager.stream_status.value = StreamStatus.ERROR_STARTING
 
             print(f"[ERROR] Failed to start stream: {e}")
             raise RuntimeError(f"Error starting stream: {e}")
 
-
-    def end_stream(self) -> None:
+    def stop_stream(self) -> None:
         """ Stop the camera system and streaming. """
         
-        if shared_manager.stream_status.value == shared_manager.StreamStatus.STOPPED:
+        if SharedManager.stream_status.value == StreamStatus.STOPPED:
             raise RuntimeError("Stream is not running")
 
         try:
@@ -71,10 +70,10 @@ class ManualControlRouter:
                 if self.camera_system.stop():
                     self.camera_system = None
                 
-                shared_manager.stream_status.value = shared_manager.StreamStatus.STOPPED
+                SharedManager.stream_status.value = StreamStatus.STOPPED
 
         except Exception as e:
-            shared_manager.stream_status.value = shared_manager.StreamStatus.ERROR
+            SharedManager.stream_status.value = StreamStatus.ERROR_STOPPING
 
             print(f"[ERROR] Failed to stop stream: {e}")
             raise RuntimeError(f"Error ending stream: {e}")

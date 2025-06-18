@@ -5,6 +5,9 @@ from fastapi import APIRouter
 from .version import router as version_router
 from .manual_control import ManualControlRouter
 
+from shared_manager import SharedManager
+SharedManager.init()
+
 router = APIRouter(prefix="/v1")
 # router.include_router(schedule_router)
 router.include_router(version_router)

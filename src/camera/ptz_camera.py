@@ -13,7 +13,7 @@ import numpy as np
 import src.camera.visca as visca
 from src.camera.camera import Camera
 from src.config import PTZConfig
-import shared_manager as shared_manager
+from shared_manager import SharedManager, StreamStatus
 
 NUM2PRESET = {0: 'left', 1: 'center', 2: 'right'}
 PRESET2NUM = {'left': 0, 'center': 1, 'right': 2}
@@ -149,7 +149,7 @@ class PTZCamera(Camera, multiprocessing.Process):
 
             f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
 
-            shared_manager.stream_status.value = shared_manager.StreamStatus.STREAMING
+            SharedManager.stream_status.value = StreamStatus.STREAMING
 
             while not self.event_stop.is_set():
                 start_time = time.time()
@@ -169,7 +169,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         except Exception as e:
             print(f"PTZ Camera: {e}")
 
-            shared_manager.stream_status.value = shared_manager.StreamStatus.ERROR
+            SharedManager.stream_status.value = StreamStatus.ERROR_STREAMING
 
 
         finally:
@@ -184,7 +184,7 @@ class PTZCamera(Camera, multiprocessing.Process):
             if not f.closed:
                 f.close()
 
-            shared_manager.stream_status.value = shared_manager.StreamStatus.STOPPED
+            SharedManager.stream_status.value = StreamStatus.STOPPED
 
 
     def get_frame(self) -> np.ndarray | None:

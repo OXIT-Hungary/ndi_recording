@@ -16,7 +16,7 @@ from src.camera.pano_camera import PanoCamrera
 from src.config import Config
 from src.utils.tmp import get_cluster_centroid
 import src.utils.visualize as visualize
-import shared_manager as shared_manager
+from shared_manager import SharedManager
 
 
 class CameraSystem:
@@ -44,8 +44,8 @@ class CameraSystem:
         if self.config.pano_camera.enable:
             self.cameras['pano'] = PanoCamrera(
                 config=self.config.pano_camera,
-                queue=shared_manager.pano_queue,
-                event_stop=shared_manager.event_stop,
+                queue=SharedManager.pano_queue,
+                event_stop=SharedManager.event_stop,
                 save=self.config.pano_camera.save,
                 out_path=self.out_path,
             )
@@ -54,12 +54,12 @@ class CameraSystem:
             if cfg.enable:
                 if hasattr(ptz_camera, cfg.name):
                     cls = getattr(ptz_camera, cfg.name)
-                    self.camera_queues[name] = self.manager.Queue(maxsize=1)
-                    self.camera_events[name] = self.manager.Event()
+                    self.camera_queues[name] = SharedManager.get_manager().Queue(maxsize=1)
+                    self.camera_events[name] = SharedManager.get_manager().Event()
                     self.cameras[name] = cls(
                         name=name,
                         config=cfg,
-                        event_stop=shared_manager.event_stop,
+                        event_stop=SharedManager.event_stop,
                         out_path=self.out_path,
                         queue_move=self.camera_queues[name],
                         event_move=self.camera_events[name],
@@ -108,7 +108,7 @@ class CameraSystem:
 
     def stop(self) -> bool:
         """ Returns True if all threads were joined. """
-        shared_manager.event_stop.set()
+        SharedManager.event_stop.set()
 
         for cam in self.cameras.values():
             cam.join(timeout=5)
@@ -121,11 +121,11 @@ class CameraSystem:
         sleep_time = 1 / 10  # 10 fps
 
         try:
-            while not shared_manager.event_stop.is_set():
+            while not SharedManager.event_stop.is_set():
                 start_time = time.time()
 
                 try:
-                    frame = shared_manager.pano_queue.get(block=False)
+                    frame = SharedManager.pano_queue.get(block=False)
                 except queue.Empty:
                     continue
 
