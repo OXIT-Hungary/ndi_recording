@@ -33,6 +33,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         out_path: str,
         queue_move: multiprocessing.Queue,
         event_move: multiprocessing.Event,
+        stream_status: multiprocessing.Value,
         stream_token: str = None,
     ) -> None:
         Camera.__init__(self, event_stop=event_stop)
@@ -51,6 +52,8 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.queue_move = queue_move
         self._event_move = event_move
         self._thread_move = None
+
+        self.stream_status = stream_status
 
         self.ffmpeg = None
         self.ffmpeg_stream = None
@@ -149,8 +152,7 @@ class PTZCamera(Camera, multiprocessing.Process):
 
             f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
 
-            print("hello")
-            SharedManager.stream_status.value = StreamStatus.STREAMING
+            self.stream_status.value = StreamStatus.STREAMING
 
             while not self.event_stop.is_set():
                 start_time = time.time()
@@ -170,7 +172,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         except Exception as e:
             print(f"PTZ Camera: {e}")
 
-            SharedManager.stream_status.value = StreamStatus.ERROR_STREAMING
+            self.stream_status.value = StreamStatus.ERROR_STREAMING
 
         finally:
             if self.ffmpeg is not None:
@@ -184,7 +186,7 @@ class PTZCamera(Camera, multiprocessing.Process):
             if not f.closed:
                 f.close()
 
-            SharedManager.stream_status.value = StreamStatus.STOPPED
+            self.stream_status.value = StreamStatus.STOPPED
 
 
     def get_frame(self) -> np.ndarray | None:
@@ -443,5 +445,5 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, name, config, event_stop, out_path, queue_move, event_move, stream_token):
-        super().__init__(name, config, event_stop, out_path, queue_move, event_move, stream_token)
+    def __init__(self, name, config, event_stop, out_path, queue_move, event_move, stream_status, stream_token):
+        super().__init__(name, config, event_stop, out_path, queue_move, event_move, stream_status, stream_token)

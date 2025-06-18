@@ -11,7 +11,7 @@ from shared_manager import SharedManager, StreamStatus
 class ManualControlRouter:
     def __init__(self):
         self.camera_system: Optional[CameraSystem] = None
-        self.config: Config = load_config(file_path='./configs/fradi_config.yaml')
+        self.config: Config = load_config(file_path='./configs/bvsc_config.yaml')
 
         SharedManager.stream_status.value = StreamStatus.UNDEFINED
 

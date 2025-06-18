@@ -63,6 +63,7 @@ class CameraSystem:
                         out_path=self.out_path,
                         queue_move=self.camera_queues[name],
                         event_move=self.camera_events[name],
+                        stream_status=SharedManager.stream_status,
                         stream_token=stream_token,
                     )
 
@@ -72,10 +73,10 @@ class CameraSystem:
         self.thread_detect_and_track = None
 
         # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
-        # TODO: Uncomment this for production
-        self.onnx_session = onnxruntime.InferenceSession(
-            self.config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
-        )
+        # TODO: Coomment this for offline testing, but uncomment it for production!!!
+        # self.onnx_session = onnxruntime.InferenceSession(
+        #     self.config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+        # )
 
     def _init_ndi(self) -> list:
         if not ndi.initialize():
