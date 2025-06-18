@@ -13,7 +13,7 @@ class ManualControlRouter:
         self.camera_system: Optional[CameraSystem] = None
         self.config: Config = load_config(file_path='./configs/bvsc_config.yaml')
 
-        SharedManager.stream_status.value = StreamStatus.UNDEFINED
+        SharedManager.stream_status.value = StreamStatus.STOPPED
 
     def get_router(self) -> APIRouter:
         router = APIRouter(prefix="/manual_control", tags=["Manual Control"], dependencies=[Depends(validate_api_key)])
@@ -61,7 +61,6 @@ class ManualControlRouter:
 
     def stop_stream(self) -> None:
         """ Stop the camera system and streaming. """
-        
         if SharedManager.stream_status.value == StreamStatus.STOPPED:
             raise RuntimeError("Stream is not running")
 
@@ -70,10 +69,10 @@ class ManualControlRouter:
                 if self.camera_system.stop():
                     self.camera_system = None
                 
-                SharedManager.stream_status.value = StreamStatus.STOPPED
+            SharedManager.stream_status.value = StreamStatus.STOPPED
 
         except Exception as e:
             SharedManager.stream_status.value = StreamStatus.ERROR_STOPPING
 
             print(f"[ERROR] Failed to stop stream: {e}")
-            raise RuntimeError(f"Error ending stream: {e}")
+            raise RuntimeError(f"[ERROR] Ending stream: {e}")
