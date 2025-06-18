@@ -74,9 +74,9 @@ class CameraSystem:
 
         # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
         # TODO: Coomment this for offline testing, but uncomment it for production!!!
-        # self.onnx_session = onnxruntime.InferenceSession(
-        #     self.config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
-        # )
+        self.onnx_session = onnxruntime.InferenceSession(
+            self.config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+        )
 
     def _init_ndi(self) -> list:
         if not ndi.initialize():
