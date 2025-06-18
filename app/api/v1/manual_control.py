@@ -22,7 +22,7 @@ class ManualControlRouter:
         def start_stream(payload: StreamStartRequest) -> dict:
             try:
                 self.start_stream(self.config, payload.stream_token)
-                return {"message": f"{datetime.datetime.now()}: Stream started successfully at ", "status": self.stream_status}
+                return {"message": f"{datetime.datetime.now()}: Stream started successfully at ", "status": StreamStatus(SharedManager.stream_status.value).name}
             
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to START stream: {str(e)}")
@@ -31,14 +31,14 @@ class ManualControlRouter:
         def stop_stream() -> dict:
             try:
                 self.stop_stream()
-                return {"message": f"{datetime.datetime.now()}: Stream stopped successfully", "status": self.stream_status}
+                return {"message": f"{datetime.datetime.now()}: Stream stopped successfully", "status": StreamStatus(SharedManager.stream_status.value).name}
             
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to STOP stream: {str(e)}")
             
         @router.get("/get-stream-status")
         def get_stream_status() -> dict:
-            return {"status": SharedManager.stream_status.value}
+            return {"status": StreamStatus(SharedManager.stream_status.value).name}
 
         return router
 

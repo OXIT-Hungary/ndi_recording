@@ -75,7 +75,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-loglevel", "error",
                     "-f", "rawvideo",
                     "-pix_fmt", "bgr24",
-                    "-s", f"{width}x{height}",
+                    "-s", f"{self.config.frame_size[0]}x{self.config.frame_size[1]}",
                     "-r", str(self.config.fps),
                     "-hwaccel", "cuda",
                     "-hwaccel_output_format", "cuda",
@@ -89,7 +89,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                 ],
                 stdin=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
-                bufsize=width*height*3 * 5,
+                bufsize=self.config.frame_size[0]*self.config.frame_size[1]*3 * 5,
             )
             # fmt: on
 

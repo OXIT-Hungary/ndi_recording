@@ -72,6 +72,7 @@ class CameraSystem:
         self.thread_detect_and_track = None
 
         # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
+        # TODO: Uncomment this for production
         self.onnx_session = onnxruntime.InferenceSession(
             self.config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )

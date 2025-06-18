@@ -149,6 +149,7 @@ class PTZCamera(Camera, multiprocessing.Process):
 
             f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
 
+            print("hello")
             SharedManager.stream_status.value = StreamStatus.STREAMING
 
             while not self.event_stop.is_set():
@@ -170,7 +171,6 @@ class PTZCamera(Camera, multiprocessing.Process):
             print(f"PTZ Camera: {e}")
 
             SharedManager.stream_status.value = StreamStatus.ERROR_STREAMING
-
 
         finally:
             if self.ffmpeg is not None:
