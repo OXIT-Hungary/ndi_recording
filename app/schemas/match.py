@@ -1,7 +1,12 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 
-class StreamStartRequest(BaseModel):
+class Match(BaseModel):
+    id: Optional[int] = Field(
+        default=None,
+        description="Unique identifier for the match.",
+        example=1
+    )
     division: Optional[str] = Field(
         default=None,
         description="Grouping of teams or players based on gender, age, or skill.",
@@ -9,31 +14,26 @@ class StreamStartRequest(BaseModel):
     )
     league: Optional[str] = Field(
         default=None,
-        description="League of the playing teams.",
+        description="Competition or organization the match belongs to.",
         examples=["A"]
     )
     home_team: Optional[str] = Field(
         default=None,
-        description="The name of the home team.",
-        examples=["FTC", "BVSC"]
+        description="The team hosting the match.",
+        examples=["BVSC"]
     )
     away_team: Optional[str] = Field(
         default=None,
-        description="The name of the away team.",
-        examples=["BVSC", "FTC"]
+        description="The visiting team.",
+        examples=["FTC"]
     )
     playing_field: Optional[str] = Field(
         default=None,
-        description="The name of the playing field where the match will take place.",
+        description="The field where the match will be played.",
         examples=["Szőnyi úti fedett uszoda"]
     )
-    cheduled_match_time: Optional[str] = Field(
+    scheduled_match_time: Optional[str] = Field(
         default=None,
-        description="The sheduled starting time of the match.",
+        description="Scheduled date and time of the match in format YYYY-MM-DD HH:MM:SS.",
         examples=["2025-06-06 12:30:00"]
-    )
-    stream_token: str = Field(
-        ...,  # 👈 explicitly required
-        description="The stream token passed for live streaming",
-        examples=["abcd-1234-efgh-5678"]
     )

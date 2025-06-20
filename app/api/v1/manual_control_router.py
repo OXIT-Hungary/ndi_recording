@@ -1,12 +1,14 @@
 from fastapi import APIRouter, HTTPException, Depends
-from ...schemas.manual_control import StreamStartRequest
+from ...schemas.stream_start_request import StreamStartRequest
 from src.camera.camera_system import CameraSystem
 import datetime
 from typing import Optional
 from src.config import load_config, Config
-from .authenticator import validate_api_key
+from .authenticator import user_or_admin_auth
 from shared_manager import SharedManager, StreamStatus
+import logging
 
+logger = logging.getLogger(__name__)
 
 class ManualControlRouter:
     def __init__(self):
@@ -16,7 +18,7 @@ class ManualControlRouter:
         SharedManager.stream_status.value = StreamStatus.STOPPED
 
     def get_router(self) -> APIRouter:
-        router = APIRouter(prefix="/manual_control", tags=["Manual Control"], dependencies=[Depends(validate_api_key)])
+        router = APIRouter(prefix="/manual_control", tags=["Manual Control"], dependencies=[Depends(user_or_admin_auth)])
 
         @router.post("/start-stream")
         def start_stream(payload: StreamStartRequest) -> dict:
@@ -56,8 +58,8 @@ class ManualControlRouter:
         except Exception as e:
             SharedManager.stream_status.value = StreamStatus.ERROR_STARTING
 
-            print(f"[ERROR] Failed to start stream: {e}")
-            raise RuntimeError(f"Error starting stream: {e}")
+            logging.error(f"Failed to start stream: {e}")
+            raise RuntimeError(f"Failed to start stream: {e}")
 
     def stop_stream(self) -> None:
         """ Stop the camera system and streaming. """
@@ -74,5 +76,5 @@ class ManualControlRouter:
         except Exception as e:
             SharedManager.stream_status.value = StreamStatus.ERROR_STOPPING
 
-            print(f"[ERROR] Failed to stop stream: {e}")
-            raise RuntimeError(f"[ERROR] Ending stream: {e}")
+            logging.error(f"Failed to stop stream: {e}")
+            raise RuntimeError(f"Failed to stop stream: {e}")
