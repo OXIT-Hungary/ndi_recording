@@ -16,7 +16,7 @@ templates = Jinja2Templates(directory="app/templates/streaming")
 
 youtube_router = APIRouter(prefix="/youtube", tags=["youtube"])
 
-cfg = load_config(file_path='./configs/fradi_config.yaml')
+cfg = load_config(file_path='./configs/bvsc_config.yaml')
 
 stream_timers: Dict[str, 'StreamTimer'] = {}
 stream_statuses: Dict[str, str] = {}

@@ -20,7 +20,7 @@ camera_system:
         right: [65777, 65158]
       camera_params: null
       speed: 0x10
-      stream: False
+      stream: True
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
@@ -41,9 +41,9 @@ camera_system:
       #src: /home/bvsc-oxit/Videos/cropped.mp4
       src: rtsp://192.168.33.103:554/media2/stream.sdp?profile=Profile200
       frame_size: [4096, 1484]
-      crop: [530, 850, 1120, 3660] # (top_y, top_x, bottom_y, bottom_x)
+      crop: [490, 820, 1040, 3370] # (top_y, top_x, bottom_y, bottom_x)
       fps: 20
-      camera_params: ./camera_params/bvsc/pano_params_bvsc.npy
+      camera_params: null #./camera_params/bvsc/pano_params_bvsc.npy
       save: True
   
   pano_onnx: ./models/rtdetrv2_pano.onnx
@@ -52,5 +52,5 @@ camera_system:
 bev:
   points:
     world: [[-25, 10], [25, 10], [-25, -10], [25, -10]]
-    image: [[549, 103], [2315, 71], [73, 470], [2746, 407]]
+    image: [[485, 86], [2114, 61], [35, 438], [2520, 380]]
   court_size: [25, 20]

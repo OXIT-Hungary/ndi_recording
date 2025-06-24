@@ -117,9 +117,6 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     if self.config.crop:
                         frame = frame[y : y + height, x : x + width, :]
 
-                        self.config.camera_params['K'][0, 2] -= x
-                        self.config.camera_params['K'][1, 2] -= y
-
                 elif video_cap is not None:
                     has_frame, frame = video_cap.read()
                     if not has_frame:
