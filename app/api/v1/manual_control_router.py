@@ -7,6 +7,7 @@ from src.config import load_config, Config
 from .authenticator import user_or_admin_auth
 from shared_manager import SharedManager, StreamStatus
 import logging
+from .database_router import Database
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,8 @@ class ManualControlRouter:
         def start_stream(payload: StreamStartRequest) -> dict:
             try:
                 self.start_stream(self.config, payload.stream_token)
-                return {"message": f"{datetime.datetime.now()}: Stream started successfully at ", "status": StreamStatus(SharedManager.stream_status.value).name}
+                Database.insert_match(payload)
+                return {"message": f"{datetime.datetime.now()}: Stream started successfully. ", "status": StreamStatus(SharedManager.stream_status.value).name}
             
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to START stream: {str(e)}")

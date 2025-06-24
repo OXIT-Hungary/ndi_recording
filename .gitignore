@@ -198,6 +198,9 @@ pip-selfcheck.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 
+# Files
+*.db
+
 # Local History for Visual Studio Code
 .history/
 
