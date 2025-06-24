@@ -16,7 +16,6 @@ from src.camera.pano_camera import PanoCamrera
 from src.config import Config
 from src.utils.tmp import get_cluster_centroid
 import src.utils.visualize as visualize
-from shared_manager import SharedManager
 
 
 class CameraSystem:
@@ -29,9 +28,9 @@ class CameraSystem:
 
         self.new_centroid = np.array([0, 0])
 
-        # self.manager = multiprocessing.Manager()
-        # self.event_stop = self.manager.Event()
-        # self.pano_queue = self.manager.Queue(maxsize=5)
+        self.manager = multiprocessing.Manager()
+        self.event_stop = self.manager.Event()
+        self.pano_queue = self.manager.Queue(maxsize=5)
 
         self.bev = BEV(config.bev)
 
@@ -44,8 +43,8 @@ class CameraSystem:
         if self.config.pano_camera.enable:
             self.cameras['pano'] = PanoCamrera(
                 config=self.config.pano_camera,
-                queue=SharedManager.pano_queue,
-                event_stop=SharedManager.event_stop,
+                queue=self.pano_queue,
+                event_stop=self.event_stop,
                 save=self.config.pano_camera.save,
                 out_path=self.out_path,
             )
@@ -54,16 +53,15 @@ class CameraSystem:
             if cfg.enable:
                 if hasattr(ptz_camera, cfg.name):
                     cls = getattr(ptz_camera, cfg.name)
-                    self.camera_queues[name] = SharedManager.get_manager().Queue(maxsize=1)
-                    self.camera_events[name] = SharedManager.get_manager().Event()
+                    self.camera_queues[name] = self.manager.Queue(maxsize=1)
+                    self.camera_events[name] = self.manager.Event()
                     self.cameras[name] = cls(
                         name=name,
                         config=cfg,
-                        event_stop=SharedManager.event_stop,
+                        event_stop=self.event_stop,
                         out_path=self.out_path,
                         queue_move=self.camera_queues[name],
                         event_move=self.camera_events[name],
-                        stream_status=SharedManager.stream_status,
                         stream_token=stream_token,
                     )
 
@@ -73,7 +71,6 @@ class CameraSystem:
         self.thread_detect_and_track = None
 
         # logger.info("ONNX Model Device: %s", onnxruntime.get_device())
-        # TODO: Coomment this for offline testing, but uncomment it for production!!!
         self.onnx_session = onnxruntime.InferenceSession(
             self.config.pano_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
@@ -108,14 +105,11 @@ class CameraSystem:
         else:
             raise RuntimeError("No Panorama Camera.")
 
-    def stop(self) -> bool:
-        """ Returns True if all threads were joined. """
-        SharedManager.event_stop.set()
+    def stop(self) -> None:
+        self.event_stop.set()
 
         for cam in self.cameras.values():
             cam.join(timeout=5)
-
-        return all(not cam.is_alive() for cam in self.cameras.values())
 
         # self.thread_detect_and_track.join()
 
@@ -123,11 +117,11 @@ class CameraSystem:
         sleep_time = 1 / 10  # 10 fps
 
         try:
-            while not SharedManager.event_stop.is_set():
+            while not self.event_stop.is_set():
                 start_time = time.time()
 
                 try:
-                    frame = SharedManager.pano_queue.get(block=False)
+                    frame = self.pano_queue.get(block=False)
                 except queue.Empty:
                     continue
 
@@ -191,6 +185,10 @@ class CameraSystem:
 
         except KeyboardInterrupt:
             logger.info("Keyboard Interrupt received.")
+
+    def is_running(self):
+        return not self.event_stop.is_set()
+
 
     def _transform(self, frame: np.ndarray) -> np.ndarray:
         frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0

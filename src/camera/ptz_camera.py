@@ -13,9 +13,6 @@ import numpy as np
 import src.camera.visca as visca
 from src.camera.camera import Camera
 from src.config import PTZConfig
-from shared_manager import SharedManager, StreamStatus
-import logging
-
 
 NUM2PRESET = {0: 'left', 1: 'center', 2: 'right'}
 PRESET2NUM = {'left': 0, 'center': 1, 'right': 2}
@@ -35,7 +32,6 @@ class PTZCamera(Camera, multiprocessing.Process):
         out_path: str,
         queue_move: multiprocessing.Queue,
         event_move: multiprocessing.Event,
-        stream_status: multiprocessing.Value,
         stream_token: str = None,
     ) -> None:
         Camera.__init__(self, event_stop=event_stop)
@@ -54,8 +50,6 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.queue_move = queue_move
         self._event_move = event_move
         self._thread_move = None
-
-        self.stream_status = stream_status
 
         self.ffmpeg = None
         self.ffmpeg_stream = None
@@ -98,12 +92,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         self._thread_move.start()
 
         try:
-            logging.info("Creating video receiver...")
             self.receiver = self._create_receiver()
-
-            output_file = os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.mp4")
-
-            logging.info(f"Starting ffmpeg process to record video to: {output_file}")
             # fmt: off
             self.ffmpeg = subprocess.Popen(
                     [
@@ -122,18 +111,12 @@ class PTZCamera(Camera, multiprocessing.Process):
                         "-b:v", f"{self.config.bitrate}k",
                         "-preset", "fast",
                         "-profile:v", "high",
-                        output_file,
+                        os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.mp4"),
                     ],
                     stdin=subprocess.PIPE,
-                    stderr=subprocess.PIPE
                 )
             
             if self.config.stream:
-
-                stream_url = f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
-
-                logging.info(f"Starting ffmpeg process to stream to: {stream_url}")
-
                 self.ffmpeg_stream = subprocess.Popen(
                     [
                         "ffmpeg",
@@ -157,95 +140,52 @@ class PTZCamera(Camera, multiprocessing.Process):
                         "-b:a", "128k",
                         # Output format
                         "-f", "flv",
-                        stream_url
+                        f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
                     ],
                 stdin=subprocess.PIPE,
-                stderr=subprocess.PIPE
                 )
             # fmt: on
 
-            raw_output_file = os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin")
+            f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
 
-            with open(raw_output_file, "wb") as f:
+            while not self.event_stop.is_set():
+                start_time = time.time()
+                frame = self.get_frame()
+                if frame is not None:
+                    self.ffmpeg.stdin.write(frame.tobytes())
+                    self.ffmpeg.stdin.flush()
 
-                self.stream_status.value = StreamStatus.STREAMING
-                logging.info("Streaming started successfully.")
-
-                while not self.event_stop.is_set():
-                    start_time = time.time()
-                    frame = self.get_frame()
-
-                    if frame is None:
-                        logging.warning("Received None frame. Skipping.")
-                        time.sleep(0.05)
-                        continue
-
-                    try:
-                        self.ffmpeg.stdin.write(frame.tobytes())
-                        self.ffmpeg.stdin.flush()
-                    except BrokenPipeError:
-                        logging.error("ffmpeg recording process pipe broken.")
-                        break
-
-                    if self.ffmpeg_stream:
-                        if self.ffmpeg_stream.poll() is not None:
-                            logging.error("ffmpeg streaming process exited unexpectedly.")
-                            break
-
-                        try:
-                            self.ffmpeg_stream.stdin.write(frame.tobytes())
-                            self.ffmpeg_stream.stdin.flush()
-                        except BrokenPipeError:
-                            logging.error("ffmpeg stream pipe broken.")
-                            break
+                    if self.ffmpeg_stream is not None:
+                        self.ffmpeg_stream.stdin.write(frame.tobytes())
+                        self.ffmpeg_stream.stdin.flush()
 
                     pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
                     f.write(struct.pack('ii', pan, tilt))
 
-                    elapsed = time.time() - start_time
-                    time.sleep(max(self.sleep_time - elapsed, 0))
+                time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
-            logging.exception(f"PTZ Camera encountered an error: {e}")
-
-            self.stream_status.value = StreamStatus.ERROR_STREAMING
+            print(f"PTZ Camera: {e}")
 
         finally:
-            logging.info("Stopping streams...")
+            if self.ffmpeg is not None:
+                self.ffmpeg.stdin.flush()
+                self.ffmpeg.stdin.close()
 
-            if self.ffmpeg:
-                try:
-                    self.ffmpeg.stdin.flush()
-                    self.ffmpeg.stdin.close()
-                except Exception:
-                    logging.warning("Error closing ffmpeg.stdin")
-                self.ffmpeg.wait()
+            if self.ffmpeg_stream is not None:
+                self.ffmpeg_stream.stdin.flush()
+                self.ffmpeg_stream.stdin.close()
 
-            if self.ffmpeg_stream:
-                try:
-                    self.ffmpeg_stream.stdin.flush()
-                    self.ffmpeg_stream.stdin.close()
-                except Exception:
-                    logging.warning("Error closing ffmpeg_stream.stdin")
-                self.ffmpeg_stream.wait()
-
-            self.stream_status.value = StreamStatus.STOPPED
-            logging.info("Streaming stopped.")
+            if not f.closed:
+                f.close()
 
     def get_frame(self) -> np.ndarray | None:
+        """ """
+
         t, v, _, _ = ndi.recv_capture_v3(self.receiver, 1000)
         frame = None
-
-        try:
-            if t == ndi.FRAME_TYPE_VIDEO:
-                frame = np.copy(v.data[:, :, :3])
-            else:
-                logging.warning(f"NDI received non-video frame: type={t}")
-        except Exception as e:
-            logging.error(f"Exception while processing frame: {e}")
-        finally:
-            # Always free frame memory
-            if v is not None:
-                ndi.recv_free_video_v2(self.receiver, v)
+        if t == ndi.FRAME_TYPE_VIDEO:
+            frame = np.copy(v.data[:, :, :3])
+            ndi.recv_free_video_v2(self.receiver, v)
 
         return frame
 
@@ -494,5 +434,5 @@ class Avonic_CM93_NDI(PTZCamera):
     PAN_SPEEDS = {key + 1: 340 / value for key, value in enumerate(PAN_TIMES)}
     TILT_SPEEDS = {key + 1: 120 / value for key, value in enumerate(TILT_TIMES)}
 
-    def __init__(self, name, config, event_stop, out_path, queue_move, event_move, stream_status, stream_token):
-        super().__init__(name, config, event_stop, out_path, queue_move, event_move, stream_status, stream_token)
+    def __init__(self, name, config, event_stop, out_path, queue_move, event_move, stream_token):
+        super().__init__(name, config, event_stop, out_path, queue_move, event_move, stream_token)

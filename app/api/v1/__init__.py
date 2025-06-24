@@ -5,11 +5,9 @@ from fastapi import APIRouter
 from .version import router as version_router
 from .manual_control_router import ManualControlRouter
 from.database_router import DatabaseRouter
-from shared_manager import SharedManager
 from utils.logging import configure_logging
 
 configure_logging()
-SharedManager.init()
 
 router = APIRouter(prefix="/v1")
 # router.include_router(schedule_router)
