@@ -98,8 +98,10 @@ class CameraSystem:
 
     def start(self) -> None:
         """Starts player detection on panorama frames and rotates PTZ cameras to action."""
+        SharedManager.event_stop.clear()
 
         for camera in self.cameras.values():
+            print("Camera started")
             camera.start()
 
         if 'pano' in self.cameras:

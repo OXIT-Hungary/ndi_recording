@@ -49,8 +49,8 @@ class ManualControlRouter:
     def start_stream(self, config: Config, stream_token: str) -> None:
         """ Start the camera system and streaming """
 
-        if SharedManager.stream_status.value == StreamStatus.STARTING or SharedManager.stream_status.value == StreamStatus.STREAMING:
-            raise RuntimeError("Stream already started")
+        """if SharedManager.stream_status.value == StreamStatus.STARTING or SharedManager.stream_status.value == StreamStatus.STREAMING:
+            raise RuntimeError("Stream already started")"""
 
         try:
             SharedManager.stream_status.value = StreamStatus.STARTING
@@ -65,12 +65,13 @@ class ManualControlRouter:
 
     def stop_stream(self) -> None:
         """ Stop the camera system and streaming. """
-        if SharedManager.stream_status.value == StreamStatus.STOPPED:
-            raise RuntimeError("Stream is not running")
+        """if SharedManager.stream_status.value == StreamStatus.STOPPED:
+            raise RuntimeError("Stream is not running")"""
 
         try:
             if self.camera_system:
                 if self.camera_system.stop():
+                    print("Stopped")
                     self.camera_system = None
                 
             SharedManager.stream_status.value = StreamStatus.STOPPED
