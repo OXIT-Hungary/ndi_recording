@@ -20,7 +20,7 @@ camera_system:
         right: [66217, 65287]
       camera_params: null
       speed: 0x10
-      stream: True
+      stream: False
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
@@ -43,8 +43,8 @@ camera_system:
       frame_size: [4096, 1484]
       # crop: [0, 320, 1600, 4416] # (top_y, top_x, bottom_y, bottom_x)
       crop: null
-      fps: 20
-      camera_params: null
+      fps: 5
+      camera_params: ./camera_params/fradi/pano_params_fradi.npy
       save: True
   
   pano_onnx: ./models/rtdetrv2_pano.onnx

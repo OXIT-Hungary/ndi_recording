@@ -159,8 +159,8 @@ class PTZCamera(Camera, multiprocessing.Process):
                         self.ffmpeg_stream.stdin.write(frame.tobytes())
                         self.ffmpeg_stream.stdin.flush()
 
-                    pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
-                    f.write(struct.pack('ii', pan, tilt))
+                    #pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
+                    #f.write(struct.pack('ii', pan, tilt))
 
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
