@@ -100,7 +100,7 @@ class PTZCamera(Camera, multiprocessing.Process):
             self.receiver = self._create_receiver()
             
             # Get actual NDI source frame rate if possible
-            actual_fps = self.config.fps  # You might want to detect this from NDI source
+            actual_fps = self.config.fps  # Might want to detect this from NDI source
             
             # fmt: off
             self.ffmpeg = subprocess.Popen(
@@ -132,11 +132,11 @@ class PTZCamera(Camera, multiprocessing.Process):
                     [
                         "ffmpeg",
                         "-loglevel", "error",
-                        # Input settings - CRITICAL: Use same frame rate as capture
+                        # Input settings - CRITICAL: Use same frame rate as capture!!!!!
                         "-f", "rawvideo",
                         "-pix_fmt", "bgr24",
                         "-s", "1920x1080",
-                        "-r", str(actual_fps),  # Match your actual capture rate
+                        "-r", str(actual_fps),  # Match the actual capture rate
                         "-i", "-",
                         # Audio input
                         "-f", "lavfi",
@@ -245,7 +245,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                             # Check for persistent connection issues
                             if current_time - last_successful_write > 10:
                                 print("Stream connection lost for 10+ seconds - attempting restart")
-                                # You might want to implement stream restart logic here
+                                # We might want to implement stream restart logic here
                     
                     if not stream_write_success:
                         dropped_frames += 1
