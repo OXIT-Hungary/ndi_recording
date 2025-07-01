@@ -48,7 +48,7 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.ip = config.ip
         self.visca_port = config.visca_port
         self.presets = config.presets
-        self.sleep_time = 1 / config.fps
+        # self.sleep_time = 1 / config.fps
 
         self.queue_move = queue_move
         self._event_move = event_move
@@ -98,6 +98,10 @@ class PTZCamera(Camera, multiprocessing.Process):
 
         try:
             self.receiver = self._create_receiver()
+            
+            # Get actual NDI source frame rate if possible
+            actual_fps = self.config.fps  # You might want to detect this from NDI source
+            
             # fmt: off
             self.ffmpeg = subprocess.Popen(
                     [
@@ -107,7 +111,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                         "-f", "rawvideo",
                         "-pix_fmt", "bgr24",
                         "-s", "1920x1080",
-                        "-r", str(self.config.fps),
+                        "-r", str(actual_fps),
                         "-hwaccel", "cuda",
                         "-hwaccel_output_format", "cuda",
                         "-i", "pipe:",
@@ -116,7 +120,6 @@ class PTZCamera(Camera, multiprocessing.Process):
                         "-b:v", f"{self.config.bitrate}k",
                         "-preset", "fast",
                         "-profile:v", "high",
-                        # Add buffer settings for smoother encoding
                         "-bufsize", f"{self.config.bitrate * 2}k",
                         "-maxrate", f"{self.config.bitrate * 1.2}k",
                         os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.mp4"),
@@ -129,58 +132,74 @@ class PTZCamera(Camera, multiprocessing.Process):
                     [
                         "ffmpeg",
                         "-loglevel", "error",
-                        # Video input (from stdin)
+                        # Input settings - CRITICAL: Use same frame rate as capture
                         "-f", "rawvideo",
                         "-pix_fmt", "bgr24",
                         "-s", "1920x1080",
-                        "-r", str(self.config.fps),
+                        "-r", str(actual_fps),  # Match your actual capture rate
                         "-i", "-",
-                        # Audio input (generate silence)
+                        # Audio input
                         "-f", "lavfi",
                         "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-                        # Video encoding with streaming optimizations
+                        # Video encoding optimized for YouTube Live
                         "-vcodec", "h264_nvenc",
-                        "-preset", "llhq",  # Low latency high quality
-                        "-tune", "zerolatency",  # Minimize latency
+                        "-preset", "p4",  # Better preset for streaming
+                        "-tune", "zerolatency",
+                        "-profile:v", "high",
+                        "-level", "4.1",
+                        # Bitrate settings for YouTube Live
                         "-b:v", "4500k",
-                        "-bufsize", "9000k",  # 2x bitrate for buffer
-                        "-maxrate", "5400k",  # 1.2x bitrate for max
-                        "-keyint_min", str(self.config.fps),  # Keyframe every second
-                        "-g", str(self.config.fps * 2),  # GOP size
+                        "-bufsize", "9000k",
+                        "-maxrate", "5400k",
+                        # Keyframe settings for YouTube Live
+                        "-keyint_min", str(actual_fps),
+                        "-g", str(actual_fps * 2),  # GOP of 2 seconds
+                        "-sc_threshold", "0",  # Disable scene change detection
                         # Audio encoding
                         "-c:a", "aac",
                         "-ar", "44100",
                         "-b:a", "128k",
-                        # Output format with streaming optimizations
+                        "-ac", "2",
+                        # Output format optimized for RTMP
                         "-f", "flv",
                         "-flvflags", "no_duration_filesize",
+                        # Add connection timeout and retry settings
+                        "-reconnect", "1",
+                        "-reconnect_streamed", "1",
+                        "-reconnect_delay_max", "5",
                         f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
                     ],
                     stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
                 )
             # fmt: on
 
-            # f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
-            
-            # Frame dropping variables for monitoring
+            # Improved frame tracking
             dropped_frames = 0
             last_successful_write = time.time()
             frame_count = 0
-            last_frame = None  # Keep track of last valid frame
+            last_frame = None
             none_frame_count = 0
             
+            # Frame timing management
+            target_frame_time = 1.0 / actual_fps
+            last_frame_time = time.time()
+            
             while not self.event_stop.is_set():
-                start_time = time.time()
+                loop_start = time.time()
                 
-                # Use shorter timeout for NDI to reduce latency
-                timeout = 250 if none_frame_count < 10 else 500
+                # Dynamic timeout based on recent frame availability
+                timeout = 100 if none_frame_count < 5 else 250
                 frame = self.get_frame_with_timeout(timeout_ms=timeout)
+                
+                current_time = time.time()
                 
                 if frame is not None:
                     frame_bytes = frame.tobytes()
                     frame_count += 1
-                    last_frame = frame  # Store for potential reuse
-                    none_frame_count = 0  # Reset counter
+                    last_frame = frame
+                    none_frame_count = 0
                     
                     # Check if processes are still running
                     if self.ffmpeg.poll() is not None:
@@ -189,90 +208,79 @@ class PTZCamera(Camera, multiprocessing.Process):
                         
                     if self.ffmpeg_stream and self.ffmpeg_stream.poll() is not None:
                         print(f"FFmpeg streaming process died with code: {self.ffmpeg_stream.poll()}")
-                        # TODO: Maybe implement restart logic here if needed
+                        # Try to read stderr for error info
+                        if self.ffmpeg_stream.stderr:
+                            error_output = self.ffmpeg_stream.stderr.read()
+                            if error_output:
+                                print(f"FFmpeg stream error: {error_output.decode()}")
                     
-                    # Write to local recording with error handling
+                    # Write to local recording
                     try:
                         if self.ffmpeg.stdin and not self.ffmpeg.stdin.closed:
                             self.ffmpeg.stdin.write(frame_bytes)
-
-                            # Flush every 30 frames (~1 second at 30fps) for local recording
-                            if frame_count % 30 == 0:
+                            # Less frequent flushing for local recording
+                            if frame_count % (self.config.fps * 2) == 0:  # Every 2 seconds at 30fps
                                 self.ffmpeg.stdin.flush()
                     except (BrokenPipeError, OSError) as e:
                         print(f"Local recording pipe error: {e}")
                         
-                    # Write to stream with error handling
+                    # Write to stream with better error handling
                     stream_write_success = False
-
                     if self.ffmpeg_stream and self.ffmpeg_stream.stdin and not self.ffmpeg_stream.stdin.closed:
                         try:
                             self.ffmpeg_stream.stdin.write(frame_bytes)
-
-                            # Flush every 10 frames (~333ms at 30fps) for streaming to maintain low latency
-                            if frame_count % 10 == 0:
+                            
+                            # Much less frequent flushing for streaming - every 2 seconds
+                            if frame_count % (actual_fps * 2) == 0:
                                 self.ffmpeg_stream.stdin.flush()
 
                             stream_write_success = True
-                            last_successful_write = time.time()
+                            last_successful_write = current_time
                             dropped_frames = 0
+                            
                         except (BrokenPipeError, OSError) as e:
                             print(f"Streaming pipe error: {e}")
                             dropped_frames += 1
                             
-                            # If we haven't successfully written for too long, there's a problem
-                            if time.time() - last_successful_write > 10:
-                                print("Stream has been broken for 10+ seconds")
+                            # Check for persistent connection issues
+                            if current_time - last_successful_write > 10:
+                                print("Stream connection lost for 10+ seconds - attempting restart")
+                                # You might want to implement stream restart logic here
                     
                     if not stream_write_success:
                         dropped_frames += 1
-                        if dropped_frames % 30 == 0:  # Log every 30 dropped frames
+                        if dropped_frames % (self.config.fps * 2) == 0:
                             print(f"Dropped {dropped_frames} frames")
 
-                    # Write camera position data
-                    # try:
-                    #     pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
-                    #     f.write(struct.pack('ii', pan, tilt))
-                    # except Exception as e:
-                    #     print(f"VISCA error: {e}")
+                    last_frame_time = current_time
 
                 else:
-                    # Handle None frames
                     none_frame_count += 1
                     
-                    # Skip and continue for occasional None frames
-                    if none_frame_count < 5:
-                        continue
-                    
-                    # TODO: For persistent None frames, decide what to do
+                    # Handle missing frames more gracefully
                     if none_frame_count == 5:
                         print("Warning: No frames received for 5 consecutive attempts")
-                    
-                    # After many None frames use last frame
-                    if none_frame_count > 30:  # ~3 seconds at 100ms timeout
+                    elif none_frame_count == 30:
                         print("Critical: No frames for extended period")
-                        
-                        # Repeat last frame to maintain stream continuity
-                        if last_frame is not None and self.repeat_last_frame:
-                            frame_bytes = last_frame.tobytes() 
-                            # Send the repeated frame (same write logic as above)
-                            if self.ffmpeg_stream and self.ffmpeg_stream.stdin and not self.ffmpeg_stream.stdin.closed:
+                    
+                    # For streaming continuity, repeat last frame if needed
+                    if none_frame_count > 10 and last_frame is not None and self.repeat_last_frame:
+                        # Only repeat frame if we haven't sent one recently (maintain frame rate)
+                        time_since_last_frame = current_time - last_frame_time
+                        if time_since_last_frame >= target_frame_time:
+                            frame_bytes = last_frame.tobytes()
+                            
+                            if (self.ffmpeg_stream and self.ffmpeg_stream.stdin 
+                                and not self.ffmpeg_stream.stdin.closed):
                                 try:
                                     self.ffmpeg_stream.stdin.write(frame_bytes)
-
-                                    if frame_count % 10 == 0:
-                                        self.ffmpeg_stream.stdin.flush()
+                                    last_frame_time = current_time
                                 except (BrokenPipeError, OSError):
-                                    print("Broken pipe error.")
-                        
-                        # Break the loop if no frames for too long
-                        # if none_frame_count > 100:  # ~10 seconds
-                        #     print("Breaking: No frames received for 10+ seconds")
-                        #     break
+                                    print("Broken pipe error on frame repeat")
 
-                # Maintain frame rate with some flexibility
-                elapsed = time.time() - start_time
-                sleep_time = max(self.sleep_time - elapsed, 0)
+                # Improved frame rate timing
+                elapsed = time.time() - loop_start
+                sleep_time = max(target_frame_time - elapsed, 0.001)  # Minimum 1ms sleep
                 
                 if sleep_time > 0:
                     time.sleep(sleep_time)
@@ -290,32 +298,36 @@ class PTZCamera(Camera, multiprocessing.Process):
                         if process.stdin and not process.stdin.closed:
                             process.stdin.close()
 
-                        process.terminate()
-
+                        # Give process time to finish encoding
                         try:
-                            process.wait(timeout=5)
+                            process.wait(timeout=10)
                         except subprocess.TimeoutExpired:
-                            print(f"Force killing {name} FFmpeg process")
-                            process.kill()
+                            print(f"Terminating {name} FFmpeg process")
+                            process.terminate()
+                            try:
+                                process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                print(f"Force killing {name} FFmpeg process")
+                                process.kill()
                     except Exception as e:
                         print(f"Error cleaning up {name} process: {e}")
-            
-            # if not f.closed:
-            #     f.close()
+
 
     def get_frame_with_timeout(self, timeout_ms=100) -> np.ndarray | None:
-        """Get frame with shorter timeout to reduce latency"""
+        """Get frame with timeout and better error handling"""
         try:
             t, v, _, _ = ndi.recv_capture_v3(self.receiver, timeout_ms)
             frame = None
             if t == ndi.FRAME_TYPE_VIDEO:
-                frame = np.copy(v.data[:, :, :3])
+                # Ensure we're getting the right format
+                if v.data.shape[2] >= 3:  # Make sure we have at least RGB channels
+                    frame = np.copy(v.data[:, :, :3])
                 ndi.recv_free_video_v2(self.receiver, v)
             return frame
         except Exception as e:
             print(f"NDI receive error: {e}")
             return None
-
+        
     def power_on(self) -> None:
         """Powers on camera with VISCA command."""
 
