@@ -39,7 +39,7 @@ class DatabaseRouter:
 
 class Database:
 
-    _path = 'database.db'
+    _path = 'metadata.db'
 
     @staticmethod
     def _create_table() -> None:
@@ -52,7 +52,8 @@ class Database:
                     home_team TEXT,
                     away_team TEXT,
                     playing_field TEXT,
-                    scheduled_match_time TEXT);""")
+                    scheduled_match_time TEXT
+                    UNIQUE(division, league, home_team, away_team, playing_field, scheduled_match_time));""")
                 
                 logging.info("Table created successfuly")
             except Exception as e:
@@ -67,8 +68,10 @@ class Database:
 
         try:
             with open_db(Database._path) as cursor:
-                cursor.execute("""INSERT INTO matches (division, league, home_team, away_team, playing_field, scheduled_match_time) VALUES (?, ?, ?, ?, ?, ?)""",
-                                (payload.division, payload.league, payload.home_team, payload.away_team, payload.playing_field, payload.scheduled_match_time))
+                cursor.execute("""INSERT OR IGNORE INTO matches 
+                    (division, league, home_team, away_team, playing_field, scheduled_match_time) 
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    (payload.division, payload.league, payload.home_team, payload.away_team, payload.playing_field, payload.scheduled_match_time))
 
                 return True
 
@@ -102,7 +105,6 @@ class Database:
                     playing_field=row[5],
                     scheduled_match_time=row[6]
                 ) for row in data]
-
 
                 return matches  # Returns a list of tuples
 

@@ -101,21 +101,21 @@ class PTZCamera(Camera, multiprocessing.Process):
             
             # IMPORTANT: Avonic CM93-NDI outputs at 60fps!
             # Make sure your config.fps matches the camera's actual output
-            actual_fps = 60  # Avonic CM93-NDI native frame rate
+            actual_fps = 30  # Avonic CM93-NDI native frame rate
             
             # Alternative: If you want to downsample to 30fps for streaming
             # target_stream_fps = 30  # Use this for YouTube if bandwidth is limited
             
             # fmt: off
             self.ffmpeg = subprocess.Popen(
-                    [
+                     [
                         "ffmpeg",
                         "-hide_banner",
                         "-loglevel", "error",
                         "-f", "rawvideo",
                         "-pix_fmt", "bgr24",
                         "-s", "1920x1080",
-                        "-r", str(actual_fps),
+                        "-r", str(self.config.fps),
                         "-hwaccel", "cuda",
                         "-hwaccel_output_format", "cuda",
                         "-i", "pipe:",
@@ -124,8 +124,6 @@ class PTZCamera(Camera, multiprocessing.Process):
                         "-b:v", f"{self.config.bitrate}k",
                         "-preset", "fast",
                         "-profile:v", "high",
-                        "-bufsize", f"{self.config.bitrate * 2}k",
-                        "-maxrate", f"{self.config.bitrate * 1.2}k",
                         os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.mp4"),
                     ],
                     stdin=subprocess.PIPE,
@@ -133,51 +131,31 @@ class PTZCamera(Camera, multiprocessing.Process):
             
             if self.config.stream:
                 # Start with conservative settings for debugging
-                stream_fps = 30  # Start with 30fps for stability
-                stream_bitrate = "3000k"  # Lower bitrate for testing
                 
                 ffmpeg_args = [
-                    "ffmpeg",
-                    "-y",  # Overwrite output files
-                    "-loglevel", "warning",  # More verbose logging for debugging
-                    # Input settings - match camera's native rate
-                    "-f", "rawvideo",
-                    "-pix_fmt", "bgr24",
-                    "-s", "1920x1080",
-                    "-r", str(actual_fps),  # 60fps from camera
-                    "-i", "-",
-                    # Audio input
-                    "-f", "lavfi",
-                    "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-                    # Frame rate conversion (60fps to 30fps for stability)
-                    "-filter:v", f"fps={stream_fps}",
-                    # Video encoding with conservative settings
-                    "-vcodec", "h264_nvenc",
-                    "-preset", "fast",  # More stable preset
-                    "-tune", "zerolatency",
-                    "-profile:v", "main",  # Use main profile instead of high
-                    "-level", "4.0",
-                    # Conservative bitrate settings
-                    "-b:v", stream_bitrate,
-                    "-bufsize", f"{int(stream_bitrate[:-1]) * 2}k",
-                    "-maxrate", f"{int(int(stream_bitrate[:-1]) * 1.5)}k",
-                    # Keyframe settings
-                    "-keyint_min", str(stream_fps),
-                    "-g", str(stream_fps * 2),  # 2 second GOP
-                    "-sc_threshold", "0",
-                    # Audio encoding
-                    "-c:a", "aac",
-                    "-ar", "44100",
-                    "-b:a", "128k",
-                    "-ac", "2",
-                    # Output format with stability improvements
-                    "-f", "flv",
-                    "-flvflags", "no_duration_filesize",
-                    # Network settings for stability
-                    "-rtmp_live", "live",
-                    "-rtmp_buffer", "1000",
-                    f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
-                ]
+                        "ffmpeg",
+                        "-loglevel", "error",
+                        # Video input (from stdin)
+                        "-f", "rawvideo",
+                        "-pix_fmt", "bgr24",
+                        "-s", "1920x1080",
+                        "-r", str(self.config.fps),
+                        "-i", "-",
+                        # Audio input (generate silence)
+                        "-f", "lavfi",
+                        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                        # Video encoding
+                        "-vcodec", "h264_nvenc",
+                        "-preset", "fast",
+                        "-b:v", "4500k",
+                        # Audio encoding
+                        "-c:a", "aac",
+                        "-ar", "44100",
+                        "-b:a", "128k",
+                        # Output format
+                        "-f", "flv",
+                        f"rtmp://a.rtmp.youtube.com/live2/{self.stream_token}"
+                    ]
                 
                 print(f"Starting FFmpeg with command: {' '.join(ffmpeg_args)}")
                 
@@ -210,7 +188,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                 loop_start = time.time()
                 
                 # Dynamic timeout based on recent frame availability
-                timeout = 100 if none_frame_count < 5 else 250
+                timeout = 1000 if none_frame_count < 5 else 2000  # Increased timeout
                 frame = self.get_frame_with_timeout(timeout_ms=timeout)
                 
                 current_time = time.time()
@@ -262,8 +240,9 @@ class PTZCamera(Camera, multiprocessing.Process):
                         print(f"Local recording pipe error: {e}")
                         
                     # Write to stream with better error handling
-                    stream_write_success = False
+                    
                     if self.ffmpeg_stream and self.ffmpeg_stream.stdin and not self.ffmpeg_stream.stdin.closed:
+
                         try:
                             self.ffmpeg_stream.stdin.write(frame_bytes)
                             
@@ -271,7 +250,6 @@ class PTZCamera(Camera, multiprocessing.Process):
                             if frame_count % (actual_fps * 2) == 0:
                                 self.ffmpeg_stream.stdin.flush()
 
-                            stream_write_success = True
                             last_successful_write = current_time
                             dropped_frames = 0
                             
@@ -282,12 +260,11 @@ class PTZCamera(Camera, multiprocessing.Process):
                             # Check for persistent connection issues
                             if current_time - last_successful_write > 10:
                                 print("Stream connection lost for 10+ seconds - attempting restart")
-                                # You might want to implement stream restart logic here
+                                # Might want to implement stream restart logic here
                     
-                    if not stream_write_success:
-                        dropped_frames += 1
-                        if dropped_frames % 30 == 0:
-                            print(f"Dropped {dropped_frames} frames")
+
+                    if dropped_frames > 0 and dropped_frames % 30 == 0:
+                        print(f"Dropped {dropped_frames} frames")
 
                     last_frame_time = current_time
 

@@ -1,8 +1,8 @@
+import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
 from typing import Optional
 from dotenv import load_dotenv
-import os
 import logging
 
 
@@ -10,7 +10,7 @@ class Authenticator:
     def __init__(self, allow_user_key: bool = False):
         self.allow_user_key = allow_user_key
 
-        self.env_path = os.path.join(os.path.dirname(__file__), ".env.production")
+        self.env_path = os.path.join(os.path.abspath(__file__), ".env.production")
         self.load_env()
 
     def load_env(self):
