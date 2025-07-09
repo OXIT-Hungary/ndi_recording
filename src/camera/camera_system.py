@@ -9,6 +9,7 @@ import cv2
 import NDIlib as ndi
 import numpy as np
 import onnxruntime
+from filterpy.kalman import KalmanFilter
 
 import src.camera.ptz_camera as ptz_camera
 from src.bev import BEV
@@ -116,6 +117,8 @@ class CameraSystem:
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 10  # 10 fps
 
+        kf = self._create_kalman_filter(dt=sleep_time)
+
         try:
             while not self.event_stop.is_set():
                 start_time = time.time()
@@ -134,35 +137,49 @@ class CameraSystem:
                 )
 
                 if len(boxes):
-                    # img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
-                    # img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
+                    img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
+
                     proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
-                    # img_bev = self.bev.draw(detections=proj_boxes, scale=15)
+
+                    img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
+                    img_bev = self.bev.draw(detections=proj_boxes, scale=15)
 
                     proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
-                    cluster_center, cluster_points = get_cluster_centroid(points=proj_players, eps=3, min_samples=3)
+                    cluster_center, cluster_points = get_cluster_centroid(points=proj_players, eps=5, min_samples=3)
 
                     if cluster_center is None:
                         continue
 
-                    # img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
-                    # cv2.circle(
-                    #     img_bev,
-                    #     center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
-                    #     radius=3,
-                    #     color=(0, 0, 255),
-                    #     thickness=-1,
-                    # )
+                    kf.predict()
+                    kf.update(cluster_center[0])
 
-                    # new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
-                    # new_image[
-                    #     :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
-                    # ] = img_bev
+                    img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
+                    cv2.circle(
+                        img_bev,
+                        center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
+                        radius=3,
+                        color=(0, 0, 255),
+                        thickness=-1,
+                    )
 
-                    # img_out = np.concatenate((img_pano, new_image), axis=0)
-                    # cv2.imshow('asd', img_out)
-                    # cv2.waitKey(0)
+                    cv2.circle(
+                        img_bev,
+                        center=self.bev.coord_to_px(x=kf.x[0, 0], y=0, scale=15),
+                        radius=3,
+                        color=(255, 0, 255),
+                        thickness=-1,
+                    )
+
+                    #
+                    new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
+                    new_image[
+                        :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
+                    ] = img_bev
+                    #
+                    img_out = np.concatenate((img_pano, new_image), axis=0)
+                    cv2.imshow('asd', img_out)
+                    cv2.waitKey(1)
 
                     if cluster_center is not None:
                         cluster_center[0] = max(
@@ -195,6 +212,33 @@ class CameraSystem:
         dy = points[1][1] - points[0][1]
         dt = (t - times[0]) / (times[1] - times[0])
         return np.array([dt * dx + points[0][0], dt * dy + points[0][1]])
+
+    def _create_kalman_filter(self, dt=1.0):
+        # Initialize the Kalman Filter
+        kf = KalmanFilter(dim_x=2, dim_z=1)
+
+        # State Transition Matrix (F)
+        kf.F = np.array([[1, dt], [0, 1]])
+
+        # Measurement Function (H) - we only measure position
+        kf.H = np.array([[1, 0]])
+
+        # Initial State Estimate
+        kf.x = np.array([[0], [0]])  # initial position and velocity
+
+        # Initial Uncertainty
+        kf.P *= 500.0  # high uncertainty in initial state
+
+        # Measurement Noise Covariance (R)
+        kf.R = np.array([[25]])  # tune this: smaller = more trust in measurements
+
+        # Process Noise Covariance (Q)
+        kf.Q = np.eye(2) * 0.05
+
+        # Initial Estimate Covariance
+        kf.B = 0  # no control input
+
+        return kf
 
     def _move_centroid_smoothly(self, current_pos, new_pos, lerp_step_num, lerp_step_used):
         return self._lerp(

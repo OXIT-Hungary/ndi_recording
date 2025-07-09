@@ -47,6 +47,9 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.presets = config.presets
         self.sleep_time = 1 / config.fps
 
+        self.start_pan = None
+        self.prev_target = None
+
         self.queue_move = queue_move
         self._event_move = event_move
         self._thread_move = None
@@ -362,20 +365,48 @@ class PTZCamera(Camera, multiprocessing.Process):
             if distance <= threshold:
                 return pan, tilt  # Exit when within the threshold
 
+    def get_eased_speed(self, current_pan, dest_pan, threshold):
+        if self.start_pan is None or self.prev_target != dest_pan:
+            self.start_pan = current_pan
+            self.prev_target = dest_pan
+
+        total_dist = abs(dest_pan - self.start_pan)
+        current_dist = abs(current_pan - self.start_pan)
+
+        if total_dist >= threshold:
+            return self.config.speed
+
+        # Normalized progress
+        t = current_dist / threshold
+        t = max(0.0, min(1.0, t))
+
+        easing = 3 * t**2 - 2 * t**3
+
+        return int(self.config.speed * easing)
+
+    def _build_pan_command(self, current_pan, dest_pan, threshold: float = 3.0):
+        speed = self.get_eased_speed(current_pan, dest_pan, threshold)
+        direction = 0x02 if dest_pan >= current_pan else 0x01
+
+        command = bytes([0x81, 0x01, 0x06, 0x01, speed, 0x00, direction, 0x03, 0xFF])
+        return command
+
     def _move_thread(self) -> None:
         while not self.event_stop.is_set():
             try:
-                self._event_move.wait()
-
-                if self.event_stop.is_set():
-                    break
-
                 if not self.queue_move.empty():
-                    pan_pos, tilt_pos = self.queue_move.get()
+                    dest_pan, dest_tilt = self.queue_move.get()
 
-                    self.move_with_easing(pan_pos=pan_pos, tilt_pos=65158, steps=20, max_speed=self.config.speed)
+                    time.sleep(0.5)
+                    ret = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
+                    if ret is None:
+                        continue
+                    current_pan, current_tilt = ret
 
-                self._event_move.clear()
+                    command = self._build_pan_command(current_pan=current_pan, dest_pan=dest_pan)
+
+                    visca.send_command(ip=self.ip, command=command, port=self.visca_port)
+
             except Exception as e:
                 print(e)
 

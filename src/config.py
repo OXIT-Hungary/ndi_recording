@@ -73,7 +73,7 @@ class PanoramaConfig:
         self.src = config_dict.get("src")
         self.crop = config_dict.get("crop", None)
         self.fps = config_dict.get("fps", 15)
-        self.frame_size = config_dict.get("frame_size", [4096, 1600])
+        self.frame_size = config_dict.get("frame_size", [4096, 1484])
 
         camera_params_path = config_dict.get("camera_params", None)
         if camera_params_path:
