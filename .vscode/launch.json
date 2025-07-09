@@ -10,8 +10,27 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "args": [
-                "--config=configs/default_config.yaml"
+                "--config=./configs/default_config.yaml",
             ],
+            "sudo": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "test.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py",
+            "args": [],
+            "sudo": false,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "visualize.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/utils/visualize.py",
+            "args": [],
+            "sudo": false,
             "console": "integratedTerminal"
         }
     ]

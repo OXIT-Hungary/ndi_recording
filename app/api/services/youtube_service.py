@@ -1,15 +1,14 @@
 import os
 import pickle
-import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import Flow
-from google.auth.transport.requests import Request
 from dotenv import load_dotenv
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
 
-from app.schemas.youtube_stream import YoutubeStreamSchedule
 from app.api.v1.configuration import settings
+from app.schemas.youtube_stream import YoutubeStreamSchedule
 
 
 class YoutubeService:
@@ -27,8 +26,9 @@ class YoutubeService:
                 if credentials and credentials.valid:
                     # Load valid credentials from token file
                     self.credentials = credentials
-                    self.youtube = build(settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION,
-                                         credentials=credentials)
+                    self.youtube = build(
+                        settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION, credentials=credentials
+                    )
                     print("Credentials found and loaded successfully")
                     return
 
@@ -39,8 +39,9 @@ class YoutubeService:
                         with open(settings.TOKEN_FILE_PATH, 'wb') as token:
                             pickle.dump(credentials, token)
                         self.credentials = credentials
-                        self.youtube = build(settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION,
-                                             credentials=credentials)
+                        self.youtube = build(
+                            settings.YOUTUBE_SERVICE_NAME, settings.YOUTUBE_API_VERSION, credentials=credentials
+                        )
                         print("Credentials found and refreshed the token successfully")
                         return
                     except Exception as e:
@@ -58,9 +59,7 @@ class YoutubeService:
             client_config = self._get_client_secret()
 
             flow = Flow.from_client_config(
-                client_config,
-                scopes=[settings.YOUTUBE_SERVICE_SCOPE],
-                redirect_uri=settings.YOUTUBE_REDIRECT_URI
+                client_config, scopes=[settings.YOUTUBE_SERVICE_SCOPE], redirect_uri=settings.YOUTUBE_REDIRECT_URI
             )
             return flow
         except Exception as e:
@@ -68,11 +67,7 @@ class YoutubeService:
 
     def get_auth_url(self):
         flow = self._create_oauth_flow()
-        auth_url, _ = flow.authorization_url(
-            access_type="offline",
-            include_granted_scopes="true",
-            prompt="consent"
-        )
+        auth_url, _ = flow.authorization_url(access_type="offline", include_granted_scopes="true", prompt="consent")
         return auth_url
 
     def handle_oauth_callback(self, code: str):
@@ -89,6 +84,17 @@ class YoutubeService:
         except Exception as e:
             print(f"Error handling OAuth callback: {e}")
 
+    def clear_credentials(self):
+        try:
+            if os.path.exists(settings.TOKEN_FILE_PATH):
+                os.remove(settings.TOKEN_FILE_PATH)
+            self.credentials = None
+            self.youtube = None
+            return True
+        except Exception as e:
+            print(f"Error clearing credentials: {e}")
+            raise ValueError(f"Failed to clear credentials: {e}")
+
     def is_authenticated(self):
         if self.credentials is not None and self.youtube is not None:
             return True
@@ -101,11 +107,9 @@ class YoutubeService:
 
         try:
             # Call the YouTube API to get upcoming broadcasts
-            broadcasts = self.youtube.liveBroadcasts().list(
-                part="id,snippet,status",
-                broadcastType="all",
-                mine=True
-            ).execute()
+            broadcasts = (
+                self.youtube.liveBroadcasts().list(part="id,snippet,status", broadcastType="all", mine=True).execute()
+            )
 
             current_time = datetime.now(timezone.utc)
             active_streams = []
@@ -126,18 +130,16 @@ class YoutubeService:
                 end_time = datetime.fromisoformat(scheduled_end.replace('Z', '+00:00')) if scheduled_end else None
 
                 # Determine if stream is active based on status or time
-                is_time_active = (
-                        start_time and end_time and
-                        start_time <= current_time <= end_time
-                )
+                is_time_active = start_time and end_time and start_time <= current_time <= end_time
 
                 is_status_active = lifecycle_status in active_statuses
 
                 if is_status_active or is_time_active:
                     # Format times: add 1 hour and remove Z
-                    formatted_start = (start_time + timedelta(hours=1)).strftime(
-                        "%Y-%m-%d %H:%M") if start_time else None
-                    formatted_end = (end_time + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M") if end_time else None
+                    formatted_start = (
+                        (start_time + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M") if start_time else None
+                    )
+                    formatted_end = (end_time + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M") if end_time else None
 
                     stream = {
                         "stream_id": broadcast["id"],
@@ -146,7 +148,7 @@ class YoutubeService:
                         "scheduled_start_time": formatted_start,
                         "scheduled_end_time": formatted_end,
                         "privacy_status": privacy_status,
-                        "status": lifecycle_status
+                        "status": lifecycle_status,
                     }
                     active_streams.append(stream)
 
@@ -160,20 +162,10 @@ class YoutubeService:
             request = self.youtube.liveStreams().insert(
                 part="snippet,cdn,contentDetails,status",
                 body={
-                    "snippet": {
-                        "title": stream_details.title,
-                        "description": stream_details.description
-                    },
-                    "cdn": {
-                        "resolution": "variable",
-                        "frameRate": "variable",
-                        "ingestionType": "rtmp"
-                    },
-                    "contentDetails": {
-                        "enableAutoStart": True,
-                        "isReusable": True
-                    }
-                }
+                    "snippet": {"title": stream_details.title, "description": stream_details.description},
+                    "cdn": {"resolution": "variable", "frameRate": "variable", "ingestionType": "rtmp"},
+                    "contentDetails": {"enableAutoStart": True, "isReusable": True},
+                },
             )
 
             response = request.execute()
@@ -183,7 +175,7 @@ class YoutubeService:
             print(f"Error creating live stream: {e}")
             raise
 
-    def create_live_broadcast(self,stream_details: YoutubeStreamSchedule, stream_id: str):
+    def create_live_broadcast(self, stream_details: YoutubeStreamSchedule, stream_id: str):
         request = self.youtube.liveBroadcasts().insert(
             part="snippet,status,contentDetails",
             body={
@@ -191,40 +183,28 @@ class YoutubeService:
                     "title": stream_details.title,
                     "description": stream_details.description,
                     "scheduledStartTime": stream_details.start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "scheduledEndTime": stream_details.end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    "scheduledEndTime": stream_details.end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 },
                 "status": {
                     "privacyStatus": stream_details.privacy_status,
                     "selfDeclaredMadeForKids": False,
-                    "publishAt": None
+                    "publishAt": None,
                 },
-                "contentDetails": {
-                    "enableAutoStart": True
-                }
-            }
+                "contentDetails": {"enableAutoStart": True},
+            },
         )
         response = request.execute()
         broadcast_id = response["id"]
 
         # Bind the stream to the live broadcast
-        bind_request = self.youtube.liveBroadcasts().bind(
-            part="id,snippet",
-            id=broadcast_id,
-            streamId=stream_id
-        )
+        bind_request = self.youtube.liveBroadcasts().bind(part="id,snippet", id=broadcast_id, streamId=stream_id)
         bind_response = bind_request.execute()
 
         return broadcast_id
 
     def start_live_broadcast(self, broadcast_id: str):
         request = self.youtube.liveBroadcasts().update(
-            part="id,status",
-            body={
-                "id": broadcast_id,
-                "status": {
-                    "lifeCycleStatus": "live"
-                }
-            }
+            part="id,status", body={"id": broadcast_id, "status": {"lifeCycleStatus": "live"}}
         )
         response = request.execute()
         # print(f"TOKEN: {request['http']['credentials']['token']}")
@@ -236,10 +216,9 @@ class YoutubeService:
 
         try:
             # Retrieve the live broadcast details
-            broadcast_response = self.youtube.liveBroadcasts().list(
-                part="snippet,contentDetails",
-                id=broadcast_id
-            ).execute()
+            broadcast_response = (
+                self.youtube.liveBroadcasts().list(part="snippet,contentDetails", id=broadcast_id).execute()
+            )
 
             if not broadcast_response.get('items'):
                 raise ValueError(f"No broadcast found with ID {broadcast_id}")
@@ -248,10 +227,7 @@ class YoutubeService:
             stream_id = broadcast_response['items'][0]['contentDetails']['boundStreamId']
 
             # Retrieve the stream details
-            stream_response = self.youtube.liveStreams().list(
-                part="cdn",
-                id=stream_id
-            ).execute()
+            stream_response = self.youtube.liveStreams().list(part="cdn", id=stream_id).execute()
 
             if not stream_response.get('items'):
                 raise ValueError(f"No stream found with ID {stream_id}")
@@ -263,7 +239,7 @@ class YoutubeService:
                 "stream_key": stream_details['streamName'],
                 "ingestion_address": stream_details['ingestionAddress'],
                 "broadcast_id": broadcast_id,
-                "stream_id": stream_id
+                "stream_id": stream_id,
             }
 
         except Exception as e:
@@ -296,14 +272,11 @@ class YoutubeService:
             raise ValueError("Not authenticated with YouTube API")
 
         try:
-            self.youtube.liveBroadcasts().delete(
-                id=stream_id
-            ).execute()
+            self.youtube.liveBroadcasts().delete(id=stream_id).execute()
             return True
         except Exception as e:
             print(f"Error deleting stream: {e}")
             return False
-
 
     @staticmethod
     def _get_client_secret():
@@ -316,7 +289,7 @@ class YoutubeService:
                 "auth_provider_x509_cert_url": settings.GOOGLE_AUTH_CERT_URL,
                 "client_secret": settings.YOUTUBE_CLIENT_SECRET,
                 "redirect_uris": [settings.YOUTUBE_REDIRECT_URI],
-                "javascript_origins": ["http://localhost:8000"]
+                "javascript_origins": ["http://localhost:8000"],
             }
         }
         return client_config

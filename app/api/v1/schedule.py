@@ -22,7 +22,7 @@ from ...schemas.schedule import (
     ScheduleRemovedMessage,
 )
 from ...schemas.scheduled_task import ScheduledTaskSchema
-from ..dependencies import get_record_manager, get_schedule, get_scheduler
+from ..dependencies import get_schedule, get_scheduler
 
 router = APIRouter(prefix="/schedule", tags=["Schedule"])
 
@@ -82,30 +82,6 @@ def get_task(
         },
     },
 )
-def set_schedule(
-    schedule: Annotated[Schedule, Depends(get_schedule)],
-    scheduler: Annotated[Scheduler, Depends(get_scheduler)],
-    record_manager: Annotated[RecordManager, Depends(get_record_manager)],
-):
-    if schedule.start_time < datetime.now(timezone.utc):
-        raise ScheduledTaskIsInThePastException(schedule.start_time)
-
-    try:
-        id: int = scheduler.add_task(schedule=schedule, task=record_manager)
-        remaining_time: timedelta = schedule.start_time - datetime.now(timezone.utc)
-        display_time: str = get_formatted_remaining_time(remaining_time)
-
-        return ScheduleMessage(
-            remaining_time=remaining_time,
-            id=id,
-            message=f"Remaining time: {display_time}",
-        )
-    except TaskWithSameIdExists as e:
-        raise DuplicateScheduleIdException(e.id)
-    except TaskOverlapsWithOtherTask as e:
-        raise OverlappingScheduleException(e.message, e.existing_task_id)
-
-
 @router.delete(
     "/{id}",
     response_model=ScheduleRemovedMessage,

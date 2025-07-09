@@ -7,12 +7,14 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .container {
+            padding: 20px;
+            margin-top: 30px;
+            margin-bottom: 30px;
             max-width: 1000px;
-            margin-top: 50px;
         }
         .stream-card {
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+            box-shadow: 0 6px 10px rgba(0,0,0,0.15);
         }
         .no-streams {
             padding: 20px;
@@ -20,13 +22,59 @@
             border-radius: 5px;
             text-align: center;
         }
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .auto-scheduling {
+            background-color: #e7f5ff;
+            border-left: 4px solid #4dabf7;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+        }
+        .schedule-info {
+            display: flex;
+            justify-content: space-between;
+            background-color: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .schedule-time {
+            font-weight: bold;
+        }
+        /* Ensure spinner aligns nicely with button text */
+        #scheduleSubmitButton .spinner-border {
+            margin-right: 5px;
+        }
+        /* Status badge styling */
+        .badge.bg-ended {
+            background-color: #6c757d !important;
+        }
+        .badge.bg-live {
+            background-color: #198754 !important;
+        }
+        .badge.bg-scheduled {
+            background-color: #0d6efd !important;
+        }
+        .badge.bg-error {
+            background-color: #dc3545 !important;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Scheduled YouTube Streams</h1>
-            <a href="/v1/" class="btn btn-outline-secondary">Back to Home</a>
+            <div class="nav-buttons">
+                <a href="/api/v1/" class="btn btn-outline-secondary">Back to Home</a>
+                <a href="/api/v1/youtube/logout" class="btn btn-warning">Logout</a>
+            </div>
+        </div>
+
+        <div class="alert alert-info">
+            <strong>Automatic Scheduling:</strong> All streams are configured to automatically start and end at the times you specify.
         </div>
 
         {% if streams|length > 0 %}
@@ -36,16 +84,45 @@
                     <div class="card stream-card">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">{{ stream.title }}</h5>
-                            <span class="badge {% if stream.status == 'ready' %}bg-success{% elif stream.status == 'created' %}bg-warning{% else %}bg-info{% endif %}">{{ stream.status }}</span>
+                            {% if stream.status == 'ended' %}
+                                <span class="badge bg-ended">Ended</span>
+                            {% elif stream.status == 'live' %}
+                                <span class="badge bg-live">Live</span>
+                            {% elif stream.status == 'scheduled' %}
+                                <span class="badge bg-scheduled">Scheduled</span>
+                            {% elif stream.status == 'error' %}
+                                <span class="badge bg-error">Error</span>
+                            {% elif stream.status == 'ready' %}
+                                <span class="badge bg-success">Ready</span>
+                            {% elif stream.status == 'created' %}
+                                <span class="badge bg-warning">Created</span>
+                            {% else %}
+                                <span class="badge bg-info">{{ stream.status }}</span>
+                            {% endif %}
                         </div>
                         <div class="card-body">
+                            <div class="schedule-info">
+                                <div>
+                                    <span>Start: </span>
+                                    <span class="schedule-time">{{ stream.scheduled_start_time }}</span>
+                                </div>
+                                <div>
+                                    <span>End: </span>
+                                    <span class="schedule-time">{{ stream.scheduled_end_time }}</span>
+                                </div>
+                            </div>
+
                             <p><strong>ID:</strong> {{ stream.stream_id }}</p>
-                            <p><strong>Privacy:</strong> {{ stream.privacy_status }}</p>
                             <p><strong>Description:</strong> {{ stream.description }}</p>
-                            <p><strong>Scheduled Start:</strong> {{ stream.scheduled_start_time }}</p>
-                            <p><strong>Scheduled End:</strong> {{ stream.scheduled_end_time }}</p>
-                            <p><strong>Category:</strong> {{ stream.category }}</p>
-                            <button class="btn btn-danger btn-sm delete-stream" data-stream-id="{{ stream.stream_id }}">Delete Stream</button>
+                            <p><strong>Privacy:</strong> {{ stream.privacy_status }}</p>
+
+                            <div class="auto-scheduling">
+                                <p class="mb-0"><strong>Auto-scheduling:</strong> This stream will automatically start and end at the scheduled times.</p>
+                            </div>
+
+                            <div class="mt-3">
+                                <button class="btn btn-danger btn-sm delete-stream" data-stream-id="{{ stream.stream_id }}">Delete Stream</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -63,6 +140,10 @@
                 <h4>Schedule a New Stream</h4>
             </div>
             <div class="card-body">
+                <div class="alert alert-primary">
+                    <strong>Note:</strong> Streams will automatically start and end at the times you specify. Make sure your streaming software is ready before the start time.
+                </div>
+
                 <form id="scheduleForm" action="/api/v1/youtube/create-scheduled-streams" method="post">
                     <div class="mb-3">
                         <label for="title" class="form-label">Stream Title</label>
@@ -74,11 +155,11 @@
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="start_time" class="form-label">Start Time</label>
+                            <label for="start_time" class="form-label">Start Time (Auto-start enabled)</label>
                             <input type="datetime-local" class="form-control" id="start_time" name="start_time" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="end_time" class="form-label">End Time</label>
+                            <label for="end_time" class="form-label">End Time (Auto-end enabled)</label>
                             <input type="datetime-local" class="form-control" id="end_time" name="end_time" required>
                         </div>
                     </div>
@@ -100,18 +181,34 @@
                             </select>
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-primary">Schedule Stream</button>
+                    <button type="submit" class="btn btn-primary" id="scheduleSubmitButton">
+                       <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true" id="scheduleSpinner"></span>
+                       Schedule Stream
+                   </button>
                 </form>
             </div>
         </div>
     </div>
 
     <script>
+        // Auto-refresh the page every 60 seconds to update stream statuses
+        setTimeout(function() {
+            window.location.reload();
+        }, 60000);
+
         // Handle stream deletion
         document.querySelectorAll('.delete-stream').forEach(button => {
             button.addEventListener('click', async (e) => {
+                // Prevent deletion if scheduling is in progress (optional, handled by disable below)
+                if (document.getElementById('scheduleSubmitButton').disabled) {
+                     alert("Please wait for the current scheduling operation to complete.");
+                     return;
+                }
+
                 if (confirm('Are you sure you want to delete this stream?')) {
                     const streamId = e.target.dataset.streamId;
+                    // Optionally disable the clicked delete button during its own operation
+                    e.target.disabled = true;
                     try {
                         const response = await fetch(`/api/v1/youtube/delete/${streamId}`, {
                             method: 'DELETE'
@@ -119,29 +216,65 @@
                         const result = await response.json();
                         if (result.status === 'success') {
                             alert('Stream deleted successfully');
-                            location.reload();
+                            location.reload(); // Reloads page, no need to re-enable button
                         } else {
                             alert(`Error: ${result.message}`);
+                            e.target.disabled = false; // Re-enable on error
                         }
                     } catch (error) {
                         alert(`Error: ${error.message}`);
+                        e.target.disabled = false; // Re-enable on error
                     }
                 }
             });
         });
 
-        // Handle form submission
         document.getElementById('scheduleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const formData = new FormData(e.target);
+            const startTimeInput = document.getElementById('start_time');
+            const endTimeInput = document.getElementById('end_time');
+
+            const startTime = new Date(startTimeInput.value);
+            const endTime = new Date(endTimeInput.value);
+
+            // *** Added validation logic here ***
+            if (endTime <= startTime) {
+                alert('End time must be after start time');
+                // Restore button state on validation error
+                const submitButton = document.getElementById('scheduleSubmitButton');
+                const spinner = document.getElementById('scheduleSpinner');
+                const deleteButtons = document.querySelectorAll('.delete-stream');
+                submitButton.disabled = false;
+                spinner.classList.add('d-none');
+                deleteButtons.forEach(button => button.disabled = false);
+                return; // Prevent form submission
+            }
+            // *** End of added validation logic ***
+
+
+            const scheduleForm = e.target;
+            const submitButton = document.getElementById('scheduleSubmitButton');
+            const spinner = document.getElementById('scheduleSpinner');
+            const deleteButtons = document.querySelectorAll('.delete-stream'); // Get delete buttons
+
+            // --- Start Loading State ---
+            submitButton.disabled = true; // Disable submit button
+            spinner.classList.remove('d-none'); // Show spinner
+            // Disable delete buttons during scheduling
+            deleteButtons.forEach(button => button.disabled = true);
+            // --- End Loading State ---
+
+            const formData = new FormData(scheduleForm);
+
+
             const data = {
                 title: formData.get('title'),
                 description: formData.get('description'),
                 privacy_status: formData.get('privacy_status'),
-                start_time: new Date(formData.get('start_time')).toISOString(),
-                end_time: new Date(formData.get('end_time')).toISOString(),
-                category: formData.get('category')
+                start_time: startTime.toISOString(), // Use validated startTime
+                end_time: endTime.toISOString(), // Use validated endTime
+                category: formData.get('category'),
             };
 
             try {
@@ -153,15 +286,29 @@
                     body: JSON.stringify(data)
                 });
 
-                if (response.ok) {
-                    alert('Stream scheduled successfully');
-                    location.reload();
+                const responseData = await response.json();
+
+                if (response.ok && responseData.status === 'success') {
+                    alert('Stream scheduled successfully. It will automatically start and end at the specified times.');
+                    location.reload(); // Reload on success
+                    // No need to manually re-enable buttons here as the page reloads
                 } else {
-                    const errorData = await response.json();
-                    alert(`Error: ${errorData.detail || 'Unknown error'}`);
+                    // Handle both response.ok==false and responseData.status=='error'
+                    const errorMessage = responseData.detail || responseData.message || 'Unknown error occurred';
+                    alert(`Error: ${errorMessage}`);
+                    // --- Restore Button State on API Error ---
+                    submitButton.disabled = false;
+                    spinner.classList.add('d-none');
+                    deleteButtons.forEach(button => button.disabled = false);
+                    // --- End Restore ---
                 }
             } catch (error) {
                 alert(`Error: ${error.message}`);
+                // --- Restore Button State on Network/JS Error ---
+                submitButton.disabled = false;
+                spinner.classList.add('d-none');
+                deleteButtons.forEach(button => button.disabled = false);
+                // --- End Restore ---
             }
         });
     </script>

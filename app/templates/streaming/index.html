@@ -25,6 +25,10 @@
             border: 1px solid #f5c6cb;
             color: #721c24;
         }
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+       }
     </style>
 </head>
 <body>
@@ -38,13 +42,22 @@
                 <a href="/api/v1/youtube/auth" class="btn btn-primary">Authenticate with YouTube</a>
             {% else %}
                 <p>You are authenticated and can use all features.</p>
-                <a href="/api/v1/youtube/streams" class="btn btn-success">View Scheduled Streams</a>
+                <div class="action-buttons">
+                    <a href="/api/v1/youtube/streams" class="btn btn-success">View Scheduled Streams</a>
+                    <a href="/api/v1/youtube/logout" class="btn btn-warning">Logout</a>
+                </div>
             {% endif %}
         </div>
 
         {% if error_message %}
         <div class="alert alert-danger" role="alert">
             {{ error_message }}
+        </div>
+        {% endif %}
+
+        {% if message %}
+        <div class="alert alert-success" role="alert">
+            {{ message }}
         </div>
         {% endif %}
 
