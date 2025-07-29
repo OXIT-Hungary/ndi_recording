@@ -5,16 +5,48 @@ from typing import Optional
 from dotenv import load_dotenv
 import logging
 
+# Example post for start-stream with authentication
+"""
+  'http://localhost:8000/api/v1/manual_control/start-stream' \
+  -H 'accept: application/json' \
+  -H 'X-API-Key: w3bg-nKyfiU9rYskogpLY8AA7qcL8l-8pNVWqoxFF7U' \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "division": "Female",
+        "league": "A",
+        "home_team": "FTC",
+        "away_team": "BVSC",
+        "playing_field": "Szőnyi úti fedett uszoda",
+        "cheduled_match_time": "2025-06-06 12:30:00",
+        "stream_token": "abcd-1234-efgh-5678"
+    }'
+"""
 
 class Authenticator:
+    _env_loaded = False  # Class variable to track if env is loaded
+
     def __init__(self, allow_user_key: bool = False):
         self.allow_user_key = allow_user_key
 
-        self.env_path = os.path.join(os.path.abspath(__file__), ".env.production")
-        self.load_env()
+        self._ensure_env_loaded()
 
-    def load_env(self):
-        load_dotenv(dotenv_path=self.env_path)
+    @classmethod
+    def _ensure_env_loaded(cls):
+        # Only load if not already loaded
+        if not cls._env_loaded:
+            env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.production")
+            #print(f"Looking for .env file at: {env_path}")
+            
+            if os.path.exists(env_path):
+                load_dotenv(dotenv_path=env_path)
+                print("Environment file loaded successfully!")
+            else:
+                print("Environment file not found!")
+                # Maybe add fallback to load just an .env file?
+            
+            cls._env_loaded = True
+        else:
+            print("Environment already loaded, skipping...")
 
     async def __call__(self, api_key: Optional[str] = Depends(APIKeyHeader(name="X-API-Key", auto_error=False))):
         admin_key = os.getenv("ADMIN_API_KEY")

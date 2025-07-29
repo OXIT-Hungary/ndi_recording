@@ -21,7 +21,9 @@ class ManualControlRouter:
         @router.post("/start-stream")
         def start_stream(payload: StreamStartRequest) -> dict:
             try:
+                print(f"Starting stream using stream token: {payload.stream_token}")
                 self.start_stream(self.config, payload.stream_token)
+                Database.save_to_txt(payload)
                 Database.insert_match(payload)
                 return {"message": f"{datetime.datetime.now()}: Stream started successfully. ", "isRunning": False if self.camera_system is None else self.camera_system.is_running()}
             

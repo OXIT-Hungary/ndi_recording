@@ -80,6 +80,7 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 # Copy application code
 WORKDIR /app
 COPY requirements/prod.txt /app/
+COPY app/api/v1/.env.production /app/app/api/v1/
 # COPY main.py /app/
 # COPY app /app/app
 # COPY models/rtdetrv2_pano.onnx /app/models/
