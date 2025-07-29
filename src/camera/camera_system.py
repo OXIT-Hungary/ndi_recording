@@ -27,15 +27,11 @@ class CameraSystem:
         self.out_path = f"{config.out_path}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         os.makedirs(self.out_path, exist_ok=True)
 
-        self.new_centroid = np.array([0, 0])
-
         self.manager = multiprocessing.Manager()
         self.event_stop = self.manager.Event()
-        self.pano_queue = self.manager.Queue(maxsize=5)
+        self.pano_queue = self.manager.Queue(maxsize=1)
 
         self.bev = BEV(config.bev)
-
-        self.centroid = np.array([0, 0])
 
         self.cameras = {}
         self.camera_queues = {}
@@ -137,12 +133,12 @@ class CameraSystem:
                 )
 
                 if len(boxes):
-                    img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
+                    # img_pano = visualize.draw_boxes(frame=frame, labels=labels, boxes=boxes, scores=scores, threshold=0)
 
                     proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
 
-                    img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
-                    img_bev = self.bev.draw(detections=proj_boxes, scale=15)
+                    # img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
+                    # img_bev = self.bev.draw(detections=proj_boxes, scale=15)
 
                     proj_players = proj_boxes[(labels == 2) & (scores > 0.5)]
 
@@ -154,49 +150,46 @@ class CameraSystem:
                     kf.predict()
                     kf.update(cluster_center[0])
 
-                    img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
-                    cv2.circle(
-                        img_bev,
-                        center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
-                        radius=3,
-                        color=(0, 0, 255),
-                        thickness=-1,
-                    )
+                    # img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
+                    # cv2.circle(
+                    #     img_bev,
+                    #     center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
+                    #     radius=3,
+                    #     color=(0, 0, 255),
+                    #     thickness=-1,
+                    # )
 
-                    cv2.circle(
-                        img_bev,
-                        center=self.bev.coord_to_px(x=kf.x[0, 0], y=0, scale=15),
-                        radius=3,
-                        color=(255, 0, 255),
-                        thickness=-1,
-                    )
+                    # cv2.circle(
+                    #     img_bev,
+                    #     center=self.bev.coord_to_px(x=kf.x[0, 0], y=0, scale=15),
+                    #     radius=3,
+                    #     color=(255, 0, 255),
+                    #     thickness=-1,
+                    # )
 
-                    #
-                    new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
-                    new_image[
-                        :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
-                    ] = img_bev
-                    #
-                    img_out = np.concatenate((img_pano, new_image), axis=0)
-                    cv2.imshow('asd', img_out)
-                    cv2.waitKey(1)
+                    # new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
+                    # new_image[
+                    #     :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
+                    # ] = img_bev
 
+                    # img_out = np.concatenate((img_pano, new_image), axis=0)
+                    # cv2.imshow('asd', img_out)
+                    # cv2.waitKey(10)
+
+                    cluster_center = kf.x[0, 0]
                     if cluster_center is not None:
-                        cluster_center[0] = max(
-                            min(cluster_center[0], self.bev.config.court_size[0] / 2),
+                        cluster_center = max(
+                            min(cluster_center, self.bev.config.court_size[0] / 2),
                             -self.bev.config.court_size[0] / 2,
                         )
 
-                        if abs(cluster_center[0] - self.centroid[0]) > self.config.track_threshold:
-                            self.centroid = cluster_center
+                        for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
+                            pos_world = cluster_center if name == 'ptz1' else -cluster_center
+                            pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
 
-                            for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                                pos_world = cluster_center[0] if name == 'ptz1' else -cluster_center[0]
-                                pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
-
-                                if not self.camera_events[name].is_set():
-                                    self.camera_queues[name].put((pan_pos, 0))
-                                    self.camera_events[name].set()
+                            if self.camera_queues[name].empty():
+                                self.camera_queues[name].put((pan_pos, 0))
+                                # self.camera_events[name].set()
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
@@ -227,13 +220,13 @@ class CameraSystem:
         kf.x = np.array([[0], [0]])  # initial position and velocity
 
         # Initial Uncertainty
-        kf.P *= 500.0  # high uncertainty in initial state
+        kf.P *= 50.0  # high uncertainty in initial state
 
         # Measurement Noise Covariance (R)
-        kf.R = np.array([[25]])  # tune this: smaller = more trust in measurements
+        kf.R = np.array([[100]])  # tune this: smaller = more trust in measurements
 
         # Process Noise Covariance (Q)
-        kf.Q = np.eye(2) * 0.05
+        kf.Q = np.eye(2) * 0.1
 
         # Initial Estimate Covariance
         kf.B = 0  # no control input
