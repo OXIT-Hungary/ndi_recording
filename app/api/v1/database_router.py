@@ -52,7 +52,7 @@ class Database:
                     home_team TEXT,
                     away_team TEXT,
                     playing_field TEXT,
-                    scheduled_match_time TEXT
+                    scheduled_match_time TEXT,
                     UNIQUE(division, league, home_team, away_team, playing_field, scheduled_match_time));""")
                 
                 logging.info("Table created successfuly")
