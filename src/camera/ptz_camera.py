@@ -146,23 +146,26 @@ class PTZCamera(Camera, multiprocessing.Process):
                 )
             # fmt: on
 
-            f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
+            #f = open(os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.bin"), "wb")
 
             while not self.event_stop.is_set():
-                start_time = time.time()
-                frame = self.get_frame()
-                if frame is not None:
-                    self.ffmpeg.stdin.write(frame.tobytes())
-                    self.ffmpeg.stdin.flush()
+                try:
+                    start_time = time.time()
+                    frame = self.get_frame()
+                    if frame is not None:
+                        self.ffmpeg.stdin.write(frame.tobytes())
+                        self.ffmpeg.stdin.flush()
 
-                    if self.ffmpeg_stream is not None:
-                        self.ffmpeg_stream.stdin.write(frame.tobytes())
-                        self.ffmpeg_stream.stdin.flush()
+                        if self.ffmpeg_stream is not None:
+                            self.ffmpeg_stream.stdin.write(frame.tobytes())
+                            self.ffmpeg_stream.stdin.flush()
 
-                    pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
-                    f.write(struct.pack('ii', pan, tilt))
+                        pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
+                        #f.write(struct.pack('ii', pan, tilt))
 
-                time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
+                    time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
+                except Exception as e:
+                    print(f"PTZ Camera (inner_loop): {e}")        
         except Exception as e:
             print(f"PTZ Camera: {e}")
 
@@ -175,8 +178,8 @@ class PTZCamera(Camera, multiprocessing.Process):
                 self.ffmpeg_stream.stdin.flush()
                 self.ffmpeg_stream.stdin.close()
 
-            if not f.closed:
-                f.close()
+            # if not f.closed:
+            #     f.close()
 
     def get_frame(self) -> np.ndarray | None:
         """ """
@@ -405,12 +408,14 @@ class PTZCamera(Camera, multiprocessing.Process):
     def _move_thread(self) -> None:
         dest_pan = None
         while not self.event_stop.is_set():
+            start = time.time()
             current_pan, _ = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
             if current_pan is None:
                 continue
 
             if not self.queue_move.empty():
                 dest_pan, _ = self.queue_move.get()
+                #print('MOVE_COMMAND_POPPED')
 
             if dest_pan is None:
                 continue
@@ -421,7 +426,8 @@ class PTZCamera(Camera, multiprocessing.Process):
             except Exception as e:
                 print(e)
 
-            time.sleep(0.1)
+            time.sleep(0.01)
+            print('move_thread RUNTIME:', time.time() - start)
 
         visca.send_command(
             ip=self.ip,
