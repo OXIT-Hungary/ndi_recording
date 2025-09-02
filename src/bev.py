@@ -19,7 +19,20 @@ class BEV:
         self.court_width = self.config.court_size[0]
         self.court_height = self.config.court_size[1]
 
-        self.H, _ = cv2.findHomography(config.points["image"], config.points["world"], method=0)
+        self.H, mask = cv2.findHomography(config.points["image"], config.points["world"], method=0, confidence=0.99999, maxIters=100000)
+
+        proj_pts = cv2.perspectiveTransform(
+            config.points["image"].astype(np.float32).reshape(-1,1,2),
+            self.H
+        ).reshape(-1,2)
+
+        errors = np.linalg.norm(config.points["world"] - proj_pts, axis=1)
+        mean_error = errors[mask.ravel()==1].mean()
+
+        print("Reprojection error =", mean_error)
+
+
+        print(self.H)
 
     def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
 
