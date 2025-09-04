@@ -66,14 +66,13 @@ class PTZConfig:
         else:
             self.camera_params = None
 
-
 class PanoramaConfig:
     def __init__(self, config_dict):
         self.enable = config_dict.get("enable", False)
         self.src = config_dict.get("src")
         self.crop = config_dict.get("crop", None)
         self.fps = config_dict.get("fps", 15)
-        self.frame_size = config_dict.get("frame_size", [4096, 1600])
+        self.frame_size = config_dict.get("frame_size", [4096, 1484])
 
         camera_params_path = config_dict.get("camera_params", None)
         if camera_params_path:
@@ -85,6 +84,12 @@ class PanoramaConfig:
             self.camera_params = None
 
         self.save = config_dict.get("save", True)
+
+        d_path = config_dict.get("distort", None)
+        if d_path:
+            with np.load(d_path) as data:
+                self.map_x = data["map_x"]
+                self.map_y = data["map_y"]
 
 
 class CameraSystemConfig:

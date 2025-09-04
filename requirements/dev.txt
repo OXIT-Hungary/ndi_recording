@@ -4,14 +4,24 @@
 #
 #    pip-compile --output-file=requirements/dev.txt requirements/dev.in
 #
+addict==2.4.0
+    # via open3d
 annotated-types==0.7.0
     # via pydantic
 anyio==4.9.0
     # via starlette
+asttokens==3.0.0
+    # via stack-data
+attrs==25.3.0
+    # via
+    #   jsonschema
+    #   referencing
 beautifulsoup4==4.13.3
     # via google
 black==25.1.0
     # via -r requirements/dev.in
+blinker==1.9.0
+    # via flask
 cachetools==5.5.2
     # via google-auth
 certifi==2025.1.31
@@ -23,6 +33,7 @@ charset-normalizer==3.4.1
 click==8.1.8
     # via
     #   black
+    #   flask
     #   uvicorn
 coloredlogs==15.0.1
     # via onnxruntime-gpu
@@ -39,7 +50,10 @@ dotenv==0.9.9
 exceptiongroup==1.2.2
     # via
     #   anyio
+    #   ipython
     #   pytest
+executing==2.2.0
+    # via stack-data
 fastapi==0.115.12
     # via -r /home/geri/work/tools/ndi_recording/requirements/prod.in
 filelock==3.18.0
@@ -48,6 +62,10 @@ filterpy==1.4.5
     # via -r /home/geri/work/tools/ndi_recording/requirements/prod.in
 flake8==7.2.0
     # via -r requirements/dev.in
+flask==3.0.3
+    # via
+    #   dash
+    #   open3d
 flatbuffers==25.2.10
     # via onnxruntime-gpu
 fonttools==4.57.0
@@ -84,10 +102,22 @@ idna==3.10
     # via
     #   anyio
     #   requests
+imageio==2.37.0
+    # via -r /home/bvsc-oxit/Documents/BACKUP/Only_For_Testing/ndi_recording/requirements/prod.in
+importlib-metadata==8.6.1
+    # via dash
 iniconfig==2.1.0
     # via pytest
+ipython==8.34.0
+    # via ipywidgets
+ipywidgets==8.1.5
+    # via open3d
 isort==6.0.1
     # via -r requirements/dev.in
+itsdangerous==2.2.0
+    # via flask
+jedi==0.19.2
+    # via ipython
 jinja2==3.1.6
     # via -r /home/geri/work/tools/ndi_recording/requirements/prod.in
 joblib==1.4.2
@@ -108,6 +138,10 @@ multiprocess==0.70.17
     # via -r /home/geri/work/tools/ndi_recording/requirements/prod.in
 mypy-extensions==1.0.0
     # via black
+narwhals==1.33.0
+    # via plotly
+nbformat==5.10.4
+    # via open3d
 ndi-python==5.1.1.2
     # via -r /home/geri/work/tools/ndi_recording/requirements/prod.in
 nodeenv==1.9.1
@@ -120,6 +154,7 @@ numpy==2.2.4
     #   matplotlib
     #   ndi-python
     #   onnxruntime-gpu
+    #   open3d
     #   opencv-python-headless
     #   scikit-learn
     #   scipy
@@ -134,9 +169,16 @@ packaging==24.2
     #   black
     #   matplotlib
     #   onnxruntime-gpu
+    #   plotly
     #   pytest
+pandas==2.2.3
+    # via open3d
+parso==0.8.4
+    # via jedi
 pathspec==0.12.1
     # via black
+pexpect==4.9.0
+    # via ipython
 pillow==11.1.0
     # via
     #   -r /home/geri/work/tools/ndi_recording/requirements/prod.in
@@ -144,11 +186,16 @@ pillow==11.1.0
 platformdirs==4.3.7
     # via
     #   black
+    #   jupyter-core
     #   virtualenv
+plotly==6.0.1
+    # via dash
 pluggy==1.5.0
     # via pytest
 pre-commit==4.2.0
     # via -r requirements/dev.in
+prompt-toolkit==3.0.50
+    # via ipython
 proto-plus==1.26.1
     # via google-api-core
 protobuf==6.30.2
@@ -158,6 +205,10 @@ protobuf==6.30.2
     #   googleapis-common-protos
     #   onnxruntime-gpu
     #   proto-plus
+ptyprocess==0.7.0
+    # via pexpect
+pure-eval==0.2.3
+    # via stack-data
 pyasn1==0.6.1
     # via
     #   pyasn1-modules
@@ -189,16 +240,29 @@ python-dotenv==1.1.0
     # via
     #   dotenv
     #   pydantic-settings
+pytz==2025.2
+    # via pandas
 pyyaml==6.0.2
     # via
     #   -r /home/geri/work/tools/ndi_recording/requirements/prod.in
     #   pre-commit
+referencing==0.36.2
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
 requests==2.32.3
     # via
+    #   dash
     #   google-api-core
     #   requests-oauthlib
 requests-oauthlib==2.0.0
     # via google-auth-oauthlib
+retrying==1.3.4
+    # via dash
+rpds-py==0.24.0
+    # via
+    #   jsonschema
+    #   referencing
 rsa==4.9
     # via google-auth
 scikit-learn==1.6.1
@@ -213,6 +277,8 @@ sniffio==1.3.1
     # via anyio
 soupsieve==2.6
     # via beautifulsoup4
+stack-data==0.6.3
+    # via ipython
 starlette==0.46.1
     # via fastapi
 sympy==1.13.3
@@ -230,7 +296,9 @@ typing-extensions==4.13.1
     #   anyio
     #   beautifulsoup4
     #   black
+    #   dash
     #   fastapi
+    #   ipython
     #   pydantic
     #   pydantic-core
     #   typing-inspection
@@ -245,3 +313,17 @@ uvicorn==0.34.0
     # via -r /home/geri/work/tools/ndi_recording/requirements/prod.in
 virtualenv==20.30.0
     # via pre-commit
+wcwidth==0.2.13
+    # via prompt-toolkit
+werkzeug==3.0.6
+    # via
+    #   dash
+    #   flask
+    #   open3d
+widgetsnbextension==4.0.13
+    # via ipywidgets
+zipp==3.21.0
+    # via importlib-metadata
+
+# The following packages are considered to be unsafe in a requirements file:
+# setuptools

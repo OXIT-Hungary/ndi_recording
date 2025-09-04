@@ -17,9 +17,6 @@ import src.camera.visca as visca
 from src.camera.camera import Camera
 from src.config import PTZConfig
 
-NUM2PRESET = {0: 'left', 1: 'center', 2: 'right'}
-PRESET2NUM = {'left': 0, 'center': 1, 'right': 2}
-
 
 class PTZCamera(Camera, multiprocessing.Process):
     """PTZ Camera class."""
@@ -49,6 +46,9 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.visca_port = config.visca_port
         self.presets = config.presets
         # self.sleep_time = 1 / config.fps
+
+        self.start_pan, _ = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
+        self.prev_dir = 0x01
 
         self.queue_move = queue_move
         self._event_move = event_move
@@ -515,22 +515,75 @@ class PTZCamera(Camera, multiprocessing.Process):
             if distance <= threshold:
                 return pan, tilt  # Exit when within the threshold
 
+    def get_eased_speed(self, current_pan: int, dest_pan: int, easing_distance: int = 50):
+
+        dist_traveled = abs(current_pan - self.start_pan)
+        dist_remaining = abs(dest_pan - current_pan)
+
+        # Ease-in
+        if dist_traveled < easing_distance:
+            t = dist_traveled / easing_distance
+            easing = 3 * t**2 - 2 * t**3
+            speed = max(1, int(self.config.speed * easing))
+        # Ease-out
+        elif dist_remaining < easing_distance:
+            t = dist_remaining / easing_distance
+            easing = 3 * t**2 - 2 * t**3
+            speed = max(1, int(self.config.speed * easing))
+        # Constant speed in between
+        else:
+            speed = self.config.speed
+
+        return speed
+
+    def _build_pan_command(self, current_pan, dest_pan):
+        dir = 0x02 if dest_pan >= current_pan else 0x01
+        if self.prev_dir != dir:
+            self.start_pan = current_pan
+            self.prev_dir = dir
+
+        if abs(self.start_pan - dest_pan) < 20:
+            return bytes([0x81, 0x01, 0x06, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFF])
+
+        speed = self.get_eased_speed(current_pan=current_pan, dest_pan=dest_pan)
+
+        if speed > 0:
+            command = bytes([0x81, 0x01, 0x06, 0x01, speed, 0x00, dir, 0x03, 0xFF])
+        else:
+            command = bytes([0x81, 0x01, 0x06, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFF])
+            self.start_pan = current_pan
+
+        return command
+
     def _move_thread(self) -> None:
+        dest_pan = None
         while not self.event_stop.is_set():
+            start = time.time()
+            current_pan, _ = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
+            if current_pan is None:
+                continue
+
+            if not self.queue_move.empty():
+                dest_pan, _ = self.queue_move.get()
+                #print('MOVE_COMMAND_POPPED')
+
+            if dest_pan is None:
+                continue
+
+            command = self._build_pan_command(current_pan=current_pan, dest_pan=dest_pan)
             try:
-                self._event_move.wait()
-
-                if self.event_stop.is_set():
-                    break
-
-                if not self.queue_move.empty():
-                    pan_pos, tilt_pos = self.queue_move.get()
-
-                    self.move_with_easing(pan_pos=pan_pos, tilt_pos=65158, steps=20, max_speed=self.config.speed)
-
-                self._event_move.clear()
+                visca.send_command(ip=self.ip, command=command, port=self.visca_port)
             except Exception as e:
                 print(e)
+
+            time.sleep(0.01)
+            print('move_thread RUNTIME:', time.time() - start)
+
+        visca.send_command(
+            ip=self.ip,
+            command=bytes([0x81, 0x01, 0x06, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFF]),
+            port=self.visca_port,
+        )
 
 
 class Avonic_CM93_NDI(PTZCamera):

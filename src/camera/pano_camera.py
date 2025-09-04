@@ -98,7 +98,9 @@ class PanoCamrera(Camera, multiprocessing.Process):
                 start_time = time.time()
 
                 if ffmpeg is not None:
+
                     raw_frame = ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
+
                     if not raw_frame:
                         continue
                         # TODO: Should we save empty image?
@@ -114,11 +116,13 @@ class PanoCamrera(Camera, multiprocessing.Process):
                             distCoeffs=self.config.camera_params['dist'],
                         )
 
+                    frame = self.undist_image(frame)
+
+                    # cv2.imwrite('undist_image.png', frame)
+
                     if self.config.crop:
                         frame = frame[y : y + height, x : x + width, :]
-
-                        self.config.camera_params['K'][0, 2] -= x
-                        self.config.camera_params['K'][1, 2] -= y
+                        #cv2.imwrite('undist_image_crop.png', frame)
 
                 elif video_cap is not None:
                     has_frame, frame = video_cap.read()
@@ -131,7 +135,8 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     ffmpeg_out.stdin.flush()
 
                 if not self.queue.full():
-                    self.queue.put(frame)
+                    self.queue.put_nowait(frame)
+                    # print('PANO_FRAME_ADDED')
 
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
@@ -146,3 +151,10 @@ class PanoCamrera(Camera, multiprocessing.Process):
             if ffmpeg_out is not None:
                 ffmpeg_out.stdin.flush()
                 ffmpeg_out.stdin.close()
+
+    
+    def undist_image(self, frame):
+
+        undistorted = cv2.remap(frame, self.config.map_x, self.config.map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+
+        return undistorted
