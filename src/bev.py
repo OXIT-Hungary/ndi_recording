@@ -19,7 +19,9 @@ class BEV:
         self.court_width = self.config.court_size[0]
         self.court_height = self.config.court_size[1]
 
-        self.H, _ = cv2.findHomography(config.points["image"], config.points["world"], method=0)
+        self.H, _ = cv2.findHomography(
+            config.points["image"], config.points["world"], method=0, confidence=0.99999, maxIters=100000
+        )
 
     def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
 
@@ -52,22 +54,22 @@ class BEV:
         pan_left = presets['left'][0]  # configbol jonnek, pan left es right value of the presets
         pan_right = presets['right'][0]
         tilt = presets['left'][1]
-        
+
         pan_deg_left, tilt_deg = visca_to_euler(pan_left, tilt)
         pan_deg_right, tilt_deg = visca_to_euler(pan_right, tilt)
-        
+
         pan_deg_left = abs(pan_deg_left)
         pan_deg_right = abs(pan_deg_right)
 
         pan_distance = pan_deg_left + pan_deg_right
-        
+
         res_pan = calc_pan_shift(self.court_width, x_axis_value, pan_distance)
-        
+
         pan_int, tilt_int = euler_to_visca(res_pan, tilt_deg)
 
         pan_pos = pan_int + 65536 if pan_int < 3000 else pan_int
         tilt_pos = tilt_int + 65536 if tilt_int < 3000 else tilt_int
-        
+
         return pan_pos, tilt_pos
 
     def calculate_reprojection_error(self):
@@ -82,10 +84,10 @@ class BEV:
 
         return x_px, y_px
 
-    def draw(self, detections: np.array = np.array([]), scale: int = 20):
+    def draw(self, detections: np.array = np.array([]), track_speeds=None, scale: int = 20):
 
         img = self.draw_court(scale=scale)
-        img = self.draw_detections(img=img, dets=detections, scale=scale)
+        img = self.draw_detections(img=img, dets=detections, track_speeds=track_speeds, scale=scale)
 
         return img
 
@@ -356,14 +358,22 @@ class BEV:
 
         return img
 
-    def draw_detections(self, img: np.ndarray, dets: np.ndarray, scale: int = 20, cluster: bool = False) -> np.ndarray:
+    def draw_detections(
+        self,
+        img: np.ndarray,
+        dets: np.ndarray,
+        track_speeds=None,
+        scale: int = 20,
+        cluster: bool = False,
+        color=(0, 0, 0),
+    ) -> np.ndarray:
         for det in dets:
             if not cluster:
                 cv2.circle(
                     img,
                     center=self.coord_to_px(x=det[0], y=det[1], scale=scale),
                     radius=2,
-                    color=(0, 0, 0),
+                    color=color,
                     thickness=-1,
                 )
             else:
@@ -373,6 +383,19 @@ class BEV:
                     radius=3,
                     color=(0, 255, 255),
                     thickness=1,
+                )
+
+        if track_speeds:
+            for det, (direction, speed) in zip(dets, track_speeds):
+
+                end_point = det + direction.squeeze() * speed
+
+                cv2.line(
+                    img,
+                    pt1=self.coord_to_px(x=det[0], y=det[1], scale=scale),
+                    pt2=self.coord_to_px(x=end_point[0], y=end_point[1], scale=scale),
+                    color=(0, 255, 0) if speed > 0.5 else (0, 0, 255),
+                    thickness=2,
                 )
 
         return img

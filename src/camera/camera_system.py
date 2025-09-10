@@ -310,9 +310,11 @@ class CameraSystem:
                     pos_world = cluster_center if name == 'ptz1' else -cluster_center
                     pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
 
-                    if self.camera_queues[name].empty():
-                        self.camera_queues[name].put((pan_pos, 0))
+                    if not self.camera_queues[name].empty():
+                        self.camera_queues[name].get()
                         # self.camera_events[name].set()
+
+                    self.camera_queues[name].put((pan_pos, 0))
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 

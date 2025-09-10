@@ -19,7 +19,7 @@ camera_system:
         center: [0x1000c, 0xfe64]
         right: [65777, 65158]
       camera_params: null
-      speed: 0x10
+      speed: 0x04
       stream: False
     ptz2:
       name: Avonic_CM93_NDI
@@ -33,7 +33,7 @@ camera_system:
         center: [0x1002a, 0xfe4d]
         right: [66018, 65143]
       camera_params: null
-      speed: 0x10
+      speed: 0x04
     pano:
       name: Vivotek-MS9321-EHV-V2
       enable: True
@@ -41,9 +41,10 @@ camera_system:
       #src: /home/bvsc-oxit/Videos/cropped.mp4
       src: rtsp://192.168.33.103:554/media2/stream.sdp?profile=Profile200
       frame_size: [4096, 1484]
-      crop: [530, 850, 1120, 3660] # (top_y, top_x, bottom_y, bottom_x)
-      fps: 20
-      camera_params: ./camera_params/bvsc/pano_params_bvsc.npy
+      crop: [380, 265, 1230, 4096] # (top_y, top_x, bottom_y, bottom_x)
+      fps: 5
+      camera_params: null #./camera_params/bvsc/pano_params_bvsc.npy
+      d: "./camera_params/bvsc/remap_4096x1484_fov115.npz"
       save: True
   
   pano_onnx: ./models/rtdetrv2_pano.onnx
@@ -52,5 +53,5 @@ camera_system:
 bev:
   points:
     world: [[-25, 10], [25, 10], [-25, -10], [25, -10]]
-    image: [[549, 103], [2315, 71], [73, 470], [2746, 407]]
+    image: [[940, 100], [2846, 26], [79, 787], [3781, 687]]
   court_size: [25, 20]
