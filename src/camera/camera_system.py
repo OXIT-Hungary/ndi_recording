@@ -51,6 +51,15 @@ class Track:
             if self.confidence > 8 and self._state == Track.State.TENTATIVE:
                 self._state = Track.State.CONFIRMED
 
+    def get_direction(self):
+        norm = np.linalg.norm([self.kf.x[2], self.kf.x[3]])
+        if norm == 0:
+            return np.array([0, 0])
+        return np.array([self.kf.x[2], self.kf.x[3]]) / norm
+
+    def get_speed(self):
+        return np.sqrt(self.kf.x[2] ** 2 + self.kf.x[3] ** 2)
+
     def _create_kalman_filter(self, x, y, dt=1.0):
         # Initialize Kalman Filter with 4 states (x, y, vx, vy) and 2 measurements (x, y)
         kf = KalmanFilter(dim_x=4, dim_z=2)
@@ -104,6 +113,10 @@ class Track:
     @property
     def pos(self):
         return self.kf.x[:2]
+
+    @property
+    def speed(self):
+        return self.kf.x[2:]
 
     @property
     def state(self):
@@ -199,18 +212,19 @@ class CameraSystem:
         for cam in self.cameras.values():
             cam.join(timeout=5)
 
-        # self.thread_detect_and_track.join()
+        self.thread_detect_and_track.join()
 
     def _detect_and_track(self) -> None:
-        sleep_time = 1 / 30  # 30 fps
+        sleep_time = 1 / 5
 
         kf_camera = self._create_kalman_filter(dt=sleep_time)
         tracks = []
         t_id = 1
 
-        output = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), 30, (1500, 644))
+        output = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), 30, (1500, 593))
 
         try:
+            cam_dir = 0
             while not self.event_stop.is_set():
                 start_time = time.time()
 
@@ -220,7 +234,7 @@ class CameraSystem:
                     frame = None
 
                 dets = []
-                img_pano = np.zeros(shape=(314, 1500, 3))
+                img_pano = np.zeros(shape=(263, 1500, 3), dtype=np.uint8)
                 if frame is not None:
                     labels, boxes, scores = self.onnx_session.run(
                         output_names=None,
@@ -234,7 +248,10 @@ class CameraSystem:
                     proj_boxes, labels, scores = self.bev.project_to_bev(boxes, labels, scores)
                     dets = proj_boxes[(labels == 2) & (scores > 0.5)].tolist()
 
-                    img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500))))
+                    img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500)))).astype(
+                        np.uint8
+                    )
+                    # print('pano size: ', img_pano.shape)
 
                 unmatched_det_inds = [i for i in range(len(dets))]
 
@@ -244,10 +261,10 @@ class CameraSystem:
 
                 # Associate
                 track_positions = np.array([t.pos.squeeze() for t in tracks])
-                track_inds, det_inds = self.associate(tracks=track_positions, dets=dets)
+                associations = self.associate(tracks=track_positions, dets=dets)
 
                 # Update
-                for t_ind, d_ind in zip(track_inds, det_inds):
+                for t_ind, d_ind in associations:
                     tracks[t_ind].update(z=dets[d_ind], has_frame=(frame is not None))
                     unmatched_det_inds = unmatched_det_inds[:d_ind] + unmatched_det_inds[d_ind + 1 :]
 
@@ -261,35 +278,85 @@ class CameraSystem:
                     tracks.append(Track(t_id=t_id, x=dets[d_ind][0], y=dets[d_ind][1], dt=sleep_time))
                     t_id += 1
 
-                if not len(tracks):
-                    continue
+                # if not len(tracks):
+                #     continue
 
                 # Calculate cluster centroid for camera movement
                 track_positions = np.array([t.pos.squeeze() for t in tracks if t.state == Track.State.CONFIRMED])
-                cluster_center, cluster_points = get_cluster_centroid(points=track_positions, eps=5, min_samples=3)
+                # print(track_positions)
+                cluster_center, cluster_points, mask = get_cluster_centroid(
+                    points=track_positions, eps=5, min_samples=3
+                )
+
+                track_speeds = [(t.get_direction(), t.get_speed()) for t in tracks if t.state == Track.State.CONFIRMED]
+                img_bev = self.bev.draw(detections=track_positions, track_speeds=track_speeds, scale=15)
+                img_bev = self.bev.draw_detections(img=img_bev, dets=dets, scale=15, color=(255, 255, 255))
+
+                # img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
 
                 if cluster_center is None:
+                    time.sleep(max(sleep_time - (time.time() - start_time), 0))
                     continue
 
                 kf_camera.predict()
                 kf_camera.update(cluster_center[0])
 
-                img_bev = self.bev.draw(detections=track_positions, scale=15)
-                img_bev = self.bev.draw_detections(img=img_bev, dets=cluster_points, scale=15, cluster=True)
-                cv2.circle(
-                    img_bev,
-                    center=self.bev.coord_to_px(x=cluster_center[0], y=cluster_center[1], scale=15),
-                    radius=3,
-                    color=(0, 0, 255),
-                    thickness=-1,
+                # Get track speed
+                direction = 0
+                for track, m in zip(tracks, mask):
+                    if m:
+                        if track.get_speed() > 0.3:
+                            if track.get_direction()[0] > 0:
+                                direction += 1
+                            else:
+                                direction -= 1
+
+                cluster_center = max(
+                    min(kf_camera.x[0, 0], self.bev.config.court_size[0] / 2),
+                    -self.bev.config.court_size[0] / 2,
                 )
 
                 cv2.circle(
                     img_bev,
-                    center=self.bev.coord_to_px(x=kf_camera.x[0, 0], y=0, scale=15),
+                    center=self.bev.coord_to_px(x=cluster_center, y=0, scale=15),
                     radius=3,
                     color=(255, 0, 255),
                     thickness=-1,
+                )
+
+                for border in [-self.bev.config.court_size[0] / 3 / 2, self.bev.config.court_size[0] / 3 / 2]:
+                    if abs(cluster_center - border) < 2:
+                        if border > 0 and direction > 2:
+                            cam_dir = 9
+                        elif border < 0 and direction < -2:
+                            cam_dir = -9
+                        elif border > 0 and direction < -2:
+                            cam_dir = 0
+                        elif border < 0 and direction > 2:
+                            cam_dir = 0
+
+                cv2.circle(
+                    img_bev,
+                    center=self.bev.coord_to_px(x=cam_dir, y=0, scale=15),
+                    radius=6,
+                    color=(255, 150, 255),
+                    thickness=-1,
+                )
+
+                cv2.line(
+                    img=img_bev,
+                    pt1=self.bev.coord_to_px(x=4.166666667, y=10, scale=15),
+                    pt2=self.bev.coord_to_px(x=4.166666667, y=-10, scale=15),
+                    color=(0, 0, 0),
+                    thickness=1,
+                )
+
+                cv2.line(
+                    img=img_bev,
+                    pt1=self.bev.coord_to_px(x=-4.166666667, y=10, scale=15),
+                    pt2=self.bev.coord_to_px(x=-4.166666667, y=-10, scale=15),
+                    color=(0, 0, 0),
+                    thickness=1,
                 )
 
                 new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
@@ -298,13 +365,8 @@ class CameraSystem:
                 ] = img_bev
 
                 img_out = np.concatenate((img_pano, new_image), axis=0)
-                output.write(img_out)
 
-                cluster_center = kf_camera.x[0, 0]
-                cluster_center = max(
-                    min(cluster_center, self.bev.config.court_size[0] / 2),
-                    -self.bev.config.court_size[0] / 2,
-                )
+                output.write(img_out)
 
                 for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
                     pos_world = cluster_center if name == 'ptz1' else -cluster_center
@@ -324,14 +386,24 @@ class CameraSystem:
 
     def associate(self, tracks, dets, VI=None):
         if len(tracks) == 0 or len(dets) == 0:
-            return [], []
+            return []
 
         if VI is None:
             cost_matrix = cdist(tracks, dets, metric='euclidean')
         else:
             cost_matrix = cdist(tracks, dets, metric='mahalanobis', VI=VI)
 
-        return linear_sum_assignment(cost_matrix)
+        cost_matrix[cost_matrix > 2] = 1e9
+
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+        # Filter assignments that were originally above the threshold
+        valid_assignments = []
+        for r, c in zip(row_ind, col_ind):
+            if cost_matrix[r, c] <= 1.5:
+                valid_assignments.append((r, c))
+
+        return valid_assignments
 
     def _create_kalman_filter(self, dt=1.0):
         # Initialize the Kalman Filter

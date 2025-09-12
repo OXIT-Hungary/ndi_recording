@@ -39,7 +39,7 @@ def main(config: Config):
     camera_system = CameraSystem(config=config)
     camera_system.start()
 
-    time.sleep(1800)
+    time.sleep(50)
     camera_system.stop()
 
     return 0

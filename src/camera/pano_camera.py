@@ -3,6 +3,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
+import queue
 
 import cv2
 import numpy as np
@@ -98,7 +99,6 @@ class PanoCamrera(Camera, multiprocessing.Process):
                 start_time = time.time()
 
                 if ffmpeg is not None:
-
                     raw_frame = ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
 
                     if not raw_frame:
@@ -109,34 +109,29 @@ class PanoCamrera(Camera, multiprocessing.Process):
                         (self.config.frame_size[1], self.config.frame_size[0], 3)
                     )
 
-                    if self.config.camera_params:
-                        frame = cv2.undistort(
-                            src=frame,
-                            cameraMatrix=self.config.camera_params['K'],
-                            distCoeffs=self.config.camera_params['dist'],
-                        )
-
                     frame = self.undist_image(frame)
-
-                    # cv2.imwrite('undist_image.png', frame)
-
-                    if self.config.crop:
-                        frame = frame[y : y + height, x : x + width, :]
-                        #cv2.imwrite('undist_image_crop.png', frame)
-
                 elif video_cap is not None:
                     has_frame, frame = video_cap.read()
+
                     if not has_frame:
                         self.event_stop.set()
                         break
+
+                if self.config.crop:
+                    frame = frame[y : y + height, x : x + width, :]
+                    # print('crop', y, x, height, width)
 
                 if ffmpeg_out is not None:
                     ffmpeg_out.stdin.write(frame.tobytes())
                     ffmpeg_out.stdin.flush()
 
-                if not self.queue.full():
+                if self.queue.full():
+                    self.queue.get()
+
+                try:
                     self.queue.put_nowait(frame)
-                    # print('PANO_FRAME_ADDED')
+                except queue.Full:
+                    print("queue Full")
 
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
@@ -152,9 +147,10 @@ class PanoCamrera(Camera, multiprocessing.Process):
                 ffmpeg_out.stdin.flush()
                 ffmpeg_out.stdin.close()
 
-    
     def undist_image(self, frame):
 
-        undistorted = cv2.remap(frame, self.config.map_x, self.config.map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+        undistorted = cv2.remap(
+            frame, self.config.map_x, self.config.map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP
+        )
 
         return undistorted
