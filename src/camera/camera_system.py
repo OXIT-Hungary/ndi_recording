@@ -369,7 +369,7 @@ class CameraSystem:
                 output.write(img_out)
 
                 for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                    pos_world = cluster_center if name == 'ptz1' else -cluster_center
+                    pos_world = cam_dir if name == 'ptz1' else -cam_dir
                     pan_pos, tilt_pos = self.bev.get_pan_from_bev(pos_world, ptz_cam.presets)
 
                     if not self.camera_queues[name].empty():
