@@ -37,6 +37,8 @@ run:
 	-v /run/avahi-daemon/socket:/run/avahi-daemon/socket \
 	-v /srv/sftp/RECORDINGS:/app/output/ \
 	-v ./:/app/ \
+	-v /etc/localtime:/etc/localtime:ro \
+	-v /etc/timezone:/etc/timezone:ro \
 	ndi_record:`git rev-parse --abbrev-ref HEAD | sed 's/[^a-zA-Z0-9_\-]/_/g'`
 
 run-xhost:
@@ -45,6 +47,8 @@ run-xhost:
 	-v /run/avahi-daemon/socket:/run/avahi-daemon/socket \
 	-v /srv/sftp/RECORDINGS:/app/output/ \
 	-v ./:/app/ \
+	-v /etc/localtime:/etc/localtime:ro \
+	-v /etc/timezone:/etc/timezone:ro \
 	--env="DISPLAY=$$DISPLAY" \
     --env="QT_X11_NO_MITSHM=1" \
     --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
