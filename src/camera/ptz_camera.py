@@ -160,7 +160,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                             self.ffmpeg_stream.stdin.write(frame.tobytes())
                             self.ffmpeg_stream.stdin.flush()
 
-                        pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
+                        # pan, tilt = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
                         # f.write(struct.pack('ii', pan, tilt))
 
                     time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
@@ -408,7 +408,7 @@ class PTZCamera(Camera, multiprocessing.Process):
     def _move_thread(self) -> None:
         dest_pan = None
         while not self.event_stop.is_set():
-            start = time.time()
+            # start = time.time()
             current_pan, _ = visca.get_camera_pan_tilt(ip=self.ip, port=self.visca_port)
             if current_pan is None:
                 continue
@@ -427,7 +427,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                 print(e)
 
             time.sleep(0.01)
-            print('move_thread RUNTIME:', time.time() - start)
+            # print('move_thread RUNTIME:', time.time() - start)
 
         visca.send_command(
             ip=self.ip,

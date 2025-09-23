@@ -30,15 +30,19 @@ class PanoCamrera(Camera, multiprocessing.Process):
 
     def run(self) -> None:
 
-        if self.config.crop is not None:
-            x = self.config.crop[1]
-            y = self.config.crop[0]
-            width = self.config.crop[3] - self.config.crop[1]
-            height = self.config.crop[2] - self.config.crop[0]
+        crop = self.config.crop
+        if crop:
+            x, y = crop[1], crop[0]
+            width, height = crop[3] - crop[1], crop[2] - crop[0]
 
-        ffmpeg = None
-        video_cap = None
+        ffmpeg = video_cap = None
         if 'rtmp' in self.config.src or 'rtsp' in self.config.src:
+            crop_filter = ""
+            if crop:
+                crop_filter = f"crop={width}:{height}:{x}:{y},"
+            vf_filter = (
+                f"{crop_filter}scale={self.config.frame_size[0]}:{self.config.frame_size[1]},fps={self.config.fps}"
+            )
             # fmt: off
             ffmpeg = subprocess.Popen(
                 [
@@ -46,13 +50,12 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-hide_banner",
                     "-loglevel", "error",
                     "-rtsp_transport", "tcp",   # Use TCP for better stability
-                    "-i", self.config.src,      # Input RTSP stream
+                    "-i", self.config.src,
                     "-f", "rawvideo",           # Output raw video
-                    "-pix_fmt", "bgr24",        # Pixel format compatible with OpenCV
+                    "-pix_fmt", "bgr24",
                     "-vsync", "0",              # Avoid frame duplication
                     "-an",                      # No audio
-                    # "-vf", f"fps={self.config.fps}, crop={width}:{height}:{x}:{y}",
-                    "-vf", f"fps={self.config.fps}, scale={self.config.frame_size[0]}:{self.config.frame_size[1]}",
+                    "-vf", vf_filter,
                     "-fflags", "nobuffer",      # Reduce latency
                     "-probesize", "32",         # Reduce initial probe size
                     "-flags", "low_delay",      # Reduce decoding delay
@@ -66,7 +69,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
         elif 'mp4' in self.config.src:
             video_cap = cv2.VideoCapture(self.config.src)
 
-        ffmpeg_out = None
+        ffmpeg_out = None  # TODO: Check out shape if crop
         if self.save:
             # fmt: off
             ffmpeg_out = subprocess.Popen(
@@ -98,52 +101,52 @@ class PanoCamrera(Camera, multiprocessing.Process):
             while not self.event_stop.is_set():
                 start_time = time.time()
 
-                if ffmpeg is not None:
+                frame = None
+                if ffmpeg:
                     raw_frame = ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
 
-                    if not raw_frame:
-                        continue
-                        # TODO: Should we save empty image?
+                    if raw_frame:
+                        frame = np.frombuffer(raw_frame, np.uint8).reshape(
+                            (self.config.frame_size[1], self.config.frame_size[0], 3)
+                        )
 
-                    frame = np.frombuffer(raw_frame, np.uint8).reshape(
-                        (self.config.frame_size[1], self.config.frame_size[0], 3)
-                    )
+                        frame = self.undist_image(frame)
+                    else:
+                        frame = np.zeros(
+                            shape=(self.config.frame_size[1], self.config.frame_size[0], 3), dtype=np.uint8
+                        )
 
-                    frame = self.undist_image(frame)
-                elif video_cap is not None:
+                elif video_cap:
                     has_frame, frame = video_cap.read()
 
                     if not has_frame:
                         self.event_stop.set()
                         break
 
+                # Crop Frame
                 if self.config.crop:
                     frame = frame[y : y + height, x : x + width, :]
-                    # print('crop', y, x, height, width)
 
-                if ffmpeg_out is not None:
+                # Save Frame
+                if ffmpeg_out:
                     ffmpeg_out.stdin.write(frame.tobytes())
                     ffmpeg_out.stdin.flush()
 
                 if self.queue.full():
                     self.queue.get()
-
-                try:
-                    self.queue.put_nowait(frame)
-                except queue.Full:
-                    print("queue Full")
+                self.queue.put_nowait(frame)
 
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
             print(f"Pano Camera: {e}")
         finally:
-            if ffmpeg is not None:
+            if ffmpeg:
                 ffmpeg.stdout.flush()
                 ffmpeg.stdout.close()
-            elif video_cap is not None:
+            elif video_cap:
                 video_cap.release()
 
-            if ffmpeg_out is not None:
+            if ffmpeg_out:
                 ffmpeg_out.stdin.flush()
                 ffmpeg_out.stdin.close()
 

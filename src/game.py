@@ -1,5 +1,9 @@
 import cv2
 import numpy as np
+from scipy.optimize import linear_sum_assignment
+from scipy.spatial.distance import cdist
+from enum import Enum
+from filterpy.kalman import KalmanFilter
 
 from src.utils.tmp import calc_pan_shift, euler_to_visca, visca_to_euler
 from src.config import BEVConfig
@@ -11,8 +15,103 @@ class Goal:
     NET_DEPTH = 1.1
 
 
-class BEV:
+class Track:
+    class Status(Enum):
+        TENTATIVE = 0
+        CONFIRMED = 1
+        DEAD = 2
 
+    def __init__(self, t_id: int, x: float, y: float, dt: float) -> None:
+
+        self.t_id = t_id
+        self.kf = self._create_kalman_filter(x=x, y=y, dt=dt)
+
+        self.confidence = 3
+        self._status = Track.Status.TENTATIVE
+
+    def predict(self) -> None:
+        self.kf.predict()
+
+        self.confidence = max(self.confidence - 1, 0)
+
+    def update(self, z) -> None:
+        self.kf.update(z)
+
+        self.confidence = min(self.confidence + 2, 10)
+
+        if self.confidence > 6 and self._status == Track.Status.TENTATIVE:
+            self._status = Track.Status.CONFIRMED
+
+    def get_direction(self):
+        norm = np.linalg.norm([self.kf.x[2], self.kf.x[3]])
+        if norm == 0:
+            return np.array([0, 0])
+        return np.array([self.kf.x[2], self.kf.x[3]]) / norm
+
+    def _create_kalman_filter(self, x, y, dt=1.0):
+        # Initialize Kalman Filter with 4 states (x, y, vx, vy) and 2 measurements (x, y)
+        kf = KalmanFilter(dim_x=4, dim_z=2)
+
+        # State Transition Matrix (F)
+        kf.F = np.array(
+            [
+                [1, 0, dt, 0],  # x = x + vx*dt
+                [0, 1, 0, dt],  # y = y + vy*dt
+                [0, 0, 1, 0],  # vx = vx
+                [0, 0, 0, 1],  # vy = vy
+            ]
+        )
+
+        # Measurement Function (H) - we only measure position (x, y)
+        kf.H = np.array(
+            [
+                [1, 0, 0, 0],
+                [0, 1, 0, 0],
+            ]
+        )
+
+        # Initial State Estimate: assume starting at origin with zero velocity
+        kf.x = np.array([[x], [y], [0], [0]])
+
+        # Initial Uncertainty in the State Estimate
+        kf.P = np.diag([5.0, 5.0, 25.0, 25.0])
+
+        # Measurement Noise Covariance Matrix (R)
+        kf.R = np.diag([4.0, 4.0])
+
+        # Process Noise Covariance Matrix (Q)
+        q = 1.0  # process noise magnitude
+        kf.Q = (
+            np.array(
+                [
+                    [0.25 * dt**4, 0, 0.5 * dt**3, 0],
+                    [0, 0.25 * dt**4, 0, 0.5 * dt**3],
+                    [0.5 * dt**3, 0, dt**2, 0],
+                    [0, 0.5 * dt**3, 0, dt**2],
+                ]
+            )
+            * q
+        )
+
+        # No control input
+        kf.B = None
+
+        return kf
+
+    @property
+    def pos(self):
+        return self.kf.x[:2]
+
+    @property
+    def speed(self):
+        return self.kf.x[2:]
+
+    @property
+    def status(self):
+        return self._status
+
+
+class Game:
     def __init__(self, config: BEVConfig):
         self.config = config
 
@@ -23,15 +122,67 @@ class BEV:
             config.points["image"], config.points["world"], method=0, confidence=0.99999, maxIters=100000
         )
 
+        self._tracks = []
+        self.t_id = 0
+
+    def update(self, labels, boxes, scores) -> None:
+
+        proj_points, labels, scores = self.project_to_bev(boxes, labels, scores)
+        dets = proj_points[(labels == 2) & (scores > 0.4)].tolist()
+
+        unmatched_det_inds = [i for i in range(len(dets))]
+
+        # Propagate Tracks
+        for track in self.tracks:
+            track.predict()
+
+        # Associate
+        track_positions = np.array([t.pos.squeeze() for t in self.tracks])
+        associations = self.associate(tracks=track_positions, dets=dets)
+
+        # Update
+        for t_ind, d_ind in associations:
+            self.tracks[t_ind].update(z=dets[d_ind])
+            unmatched_det_inds = unmatched_det_inds[:d_ind] + unmatched_det_inds[d_ind + 1 :]
+
+        # Lifetime Management
+        for ind, track in enumerate(self.tracks):
+            if track.confidence == 0:
+                self.tracks = self.tracks[:ind] + self.tracks[ind + 1 :]
+
+        # Create new tracks
+        for d_ind in unmatched_det_inds:
+            self.tracks.append(Track(t_id=self.t_id, x=dets[d_ind][0], y=dets[d_ind][1], dt=1.0 / 5))
+            self.t_id += 1
+
+    def associate(self, tracks, dets, VI=None):
+        if len(tracks) == 0 or len(dets) == 0:
+            return []
+
+        if VI is None:
+            cost_matrix = cdist(tracks, dets, metric='euclidean')
+        else:
+            cost_matrix = cdist(tracks, dets, metric='mahalanobis', VI=VI)
+
+        cost_matrix[cost_matrix > 2] = 1e9
+
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+        # Filter assignments that were originally above the threshold
+        valid_assignments = []
+        for r, c in zip(row_ind, col_ind):
+            if cost_matrix[r, c] <= 1.5:
+                valid_assignments.append((r, c))
+
+        return valid_assignments
+
     def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
 
-        proj_boxes = self._project_boxes(boxes)
+        proj_points = self._project_boxes(boxes)
 
         # mask out court size
-        within_threshold = np.all(np.abs(proj_boxes) <= (self.config.court_size / 2), axis=1)
-
-        # return proj_boxes, labels, scores
-        return proj_boxes[within_threshold], labels[within_threshold], scores[within_threshold]
+        within_threshold = np.all(np.abs(proj_points) <= (self.config.court_size / 2), axis=1)
+        return proj_points[within_threshold], labels[within_threshold], scores[within_threshold]
 
     def _project_boxes(self, boxes: np.array) -> np.array:
         """
@@ -400,11 +551,13 @@ class BEV:
 
         return img
 
+    @property
+    def tracks(self) -> list:
+        return [t for t in self._tracks if t.status == Track.Status.CONFIRMED]
+
 
 def main(config):
-
-    bev = BEV(config=config)
-    bev.draw()
+    pass
 
 
 if __name__ == "__main__":
