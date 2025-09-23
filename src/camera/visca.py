@@ -30,7 +30,8 @@ def send_inquiry(ip, command, timeout: float = 0.5, port: int = 52381):
             response, _ = sock.recvfrom(1024)  # Receive the response
             return response
         except TimeoutError as e:
-            logger.error(e)
+            #logger.error(e)
+            pass
         except Exception as e:
             logger.error("Error: %s", e)
             raise e
