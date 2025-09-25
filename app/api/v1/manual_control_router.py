@@ -41,8 +41,14 @@ class ManualControlRouter:
             
         @router.get("/get-stream-status")
         def get_stream_status() -> dict:
-            return {"isRunning": False if self.camera_system is None else self.camera_system.is_running()}
-
+            is_running = False
+            if self.camera_system is not None:
+                is_running = self.camera_system.is_running()
+            
+            return {
+                "isRunning": is_running,
+                "detail": "Stream is healthy" if is_running else "Stream is not running or unhealthy"
+            }
         return router
 
     def start_stream(self, config: Config, stream_token: str) -> None:
