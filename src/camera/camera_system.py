@@ -113,7 +113,7 @@ class CameraSystem:
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 5
 
-        # output = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), 30, (1500, 593))
+        output = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), 30, (1500, 593))
 
         try:
             cam_pos = 0
@@ -125,8 +125,10 @@ class CameraSystem:
                 except queue.Empty:
                     frame_pano = None
 
-                labels, boxes, scores = [], [], []
-                if frame_pano:
+                labels, boxes, scores = np.array([]), np.array([]), np.array([])
+
+                img_pano = np.zeros(shape=(263, 1500, 3), dtype=np.uint8)
+                if frame_pano is not None:
                     labels, boxes, scores = self.onnx_session.run(
                         output_names=None,
                         input_feed={
@@ -135,53 +137,111 @@ class CameraSystem:
                         },
                     )
 
+                    img_pano = visualize.draw_boxes(
+                        frame=frame_pano, labels=labels, boxes=boxes, scores=scores, threshold=0
+                    )
+                    img_pano = cv2.resize(img_pano, (1500, int(img_pano.shape[0] / (img_pano.shape[1] / 1500)))).astype(
+                        np.uint8
+                    )
+
                 self.game.update(labels, boxes, scores)
 
                 # Calculate cluster centroid for camera movement
                 tracks = self.game.tracks
                 track_positions = np.array([t.pos.squeeze() for t in tracks])
+                track_speeds = [(t.get_direction(), t.get_speed()) for t in tracks]
 
-                cluster_center, cluster_points, mask = get_cluster_centroid(
-                    points=track_positions, eps=5, min_samples=3
-                )
+                img_bev = self.game.draw(detections=track_positions, track_speeds=track_speeds, scale=15)
+                # img_bev = self.game.draw_detections(img=img_bev, dets=[], scale=15, color=(255, 255, 255))
+
+                proj_points, labels, scores = self.game.project_to_bev(boxes, labels, scores)
+                dets = proj_points[(labels == 2) & (scores > 0.4)].tolist()
+
+                cluster_center, cluster_points, mask = get_cluster_centroid(points=np.array(dets), eps=5, min_samples=3)
 
                 direction = 0
-                for track, m in zip(tracks, mask):
-                    if m:
-                        if track.get_direction()[0] > 0 and track.speed[0] > 0.3:
+                for track in tracks:
+                    # if m:
+                    if abs(track.speed[0][0]) > 0.35:
+                        if track.get_direction()[0] > 0:
                             direction += 1
-                        else:
+                        elif track.get_direction()[0] < 0:
                             direction -= 1
 
-                cluster_center = max(
-                    min(cluster_center[0], self.game.court_width / 2),
-                    -self.game.court_width / 2,
+                if len(cluster_center) != 0:
+                    cluster_center = max(
+                        min(cluster_center[0], self.game.court_width / 2),
+                        -self.game.court_width / 2,
+                    )
+
+                    for border in [-self.game.court_width / 3 / 2, self.game.court_width / 3 / 2]:
+                        if abs(cluster_center - border) < 3:
+                            if border > 0 and direction > 2:
+                                cam_pos = 9
+                            elif border < 0 and direction < -2:
+                                cam_pos = -9
+                            elif border > 0 and direction < -2:
+                                cam_pos = 0
+                            elif border < 0 and direction > 2:
+                                cam_pos = 0
+
+                            break
+
+                    for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
+                        pos_world = cam_pos if name == 'ptz1' else -cam_pos
+                        pan_pos, tilt_pos = self.game.get_pan_from_bev(pos_world, ptz_cam.presets)
+
+                        if not self.camera_queues[name].empty():
+                            self.camera_queues[name].get()
+                            # self.camera_events[name].set()
+
+                        self.camera_queues[name].put((pan_pos, 0))
+
+                    cv2.circle(
+                        img_bev,
+                        center=self.game.coord_to_px(x=cluster_center, y=0, scale=15),
+                        radius=3,
+                        color=(255, 0, 255),
+                        thickness=-1,
+                    )
+
+                #
+                cv2.line(
+                    img=img_bev,
+                    pt1=self.game.coord_to_px(x=4.166666667, y=10, scale=15),
+                    pt2=self.game.coord_to_px(x=4.166666667, y=-10, scale=15),
+                    color=(0, 0, 0),
+                    thickness=1,
                 )
 
-                for border in [-self.game.court_width / 3 / 2, self.game.court_width / 3 / 2]:
-                    if abs(cluster_center - border) < 3:
-                        if border > 0 and direction > 2:
-                            cam_pos = 9
-                        elif border < 0 and direction < -2:
-                            cam_pos = -9
-                        elif border > 0 and direction < -2:
-                            cam_pos = 0
-                        elif border < 0 and direction > 2:
-                            cam_pos = 0
+                cv2.line(
+                    img=img_bev,
+                    pt1=self.game.coord_to_px(x=-4.166666667, y=10, scale=15),
+                    pt2=self.game.coord_to_px(x=-4.166666667, y=-10, scale=15),
+                    color=(0, 0, 0),
+                    thickness=1,
+                )
 
-                for name, ptz_cam in [(name, cam) for name, cam in self.cameras.items() if 'ptz' in name]:
-                    pos_world = cam_pos if name == 'ptz1' else -cam_pos
-                    pan_pos, tilt_pos = self.game.get_pan_from_bev(pos_world, ptz_cam.presets)
+                cv2.circle(
+                    img_bev,
+                    center=self.game.coord_to_px(x=cam_pos, y=0, scale=15),
+                    radius=6,
+                    color=(255, 150, 255),
+                    thickness=-1,
+                )
 
-                    if not self.camera_queues[name].empty():
-                        self.camera_queues[name].get()
-                        # self.camera_events[name].set()
+                new_image = np.zeros(shape=(img_bev.shape[0], img_pano.shape[1], 3), dtype=np.uint8)
+                new_image[
+                    :, (img_pano.shape[1] - img_bev.shape[1]) // 2 : (img_pano.shape[1] + img_bev.shape[1]) // 2, :
+                ] = img_bev
 
-                    self.camera_queues[name].put((pan_pos, 0))
+                img_out = np.concatenate((img_pano, new_image), axis=0)
+
+                output.write(img_out)
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
-            # output.release()
+            output.release()
         except KeyboardInterrupt:
             print.info("Keyboard Interrupt received.")
 

@@ -106,6 +106,9 @@ class Track:
     def speed(self):
         return self.kf.x[2:]
 
+    def get_speed(self):
+        return np.sqrt(self.kf.x[2] ** 2 + self.kf.x[3] ** 2)
+
     @property
     def status(self):
         return self._status
@@ -133,26 +136,26 @@ class Game:
         unmatched_det_inds = [i for i in range(len(dets))]
 
         # Propagate Tracks
-        for track in self.tracks:
+        for track in self._tracks:
             track.predict()
 
         # Associate
-        track_positions = np.array([t.pos.squeeze() for t in self.tracks])
+        track_positions = np.array([t.pos.squeeze() for t in self._tracks])
         associations = self.associate(tracks=track_positions, dets=dets)
 
         # Update
         for t_ind, d_ind in associations:
-            self.tracks[t_ind].update(z=dets[d_ind])
+            self._tracks[t_ind].update(z=dets[d_ind])
             unmatched_det_inds = unmatched_det_inds[:d_ind] + unmatched_det_inds[d_ind + 1 :]
 
         # Lifetime Management
-        for ind, track in enumerate(self.tracks):
+        for ind, track in enumerate(self._tracks):
             if track.confidence == 0:
-                self.tracks = self.tracks[:ind] + self.tracks[ind + 1 :]
+                self._tracks = self._tracks[:ind] + self._tracks[ind + 1 :]
 
         # Create new tracks
         for d_ind in unmatched_det_inds:
-            self.tracks.append(Track(t_id=self.t_id, x=dets[d_ind][0], y=dets[d_ind][1], dt=1.0 / 5))
+            self._tracks.append(Track(t_id=self.t_id, x=dets[d_ind][0], y=dets[d_ind][1], dt=1.0 / 5))
             self.t_id += 1
 
     def associate(self, tracks, dets, VI=None):
@@ -178,6 +181,9 @@ class Game:
 
     def project_to_bev(self, boxes: np.array, labels: np.array, scores: np.array) -> np.array:
 
+        if boxes.size == 0:
+            return boxes, labels, scores
+
         proj_points = self._project_boxes(boxes)
 
         # mask out court size
@@ -187,7 +193,7 @@ class Game:
     def _project_boxes(self, boxes: np.array) -> np.array:
         """
         Project centroids onto the court.
-        :param bboxes: bounding box centroids. represented as [x, y, width, height]
+        :param boxes: bounding box centroids. represented as [x, y, width, height]
         :param H: Homography matrix. From camera image coordinate systesm to BEV space
         """
 
@@ -545,7 +551,7 @@ class Game:
                     img,
                     pt1=self.coord_to_px(x=det[0], y=det[1], scale=scale),
                     pt2=self.coord_to_px(x=end_point[0], y=end_point[1], scale=scale),
-                    color=(0, 255, 0) if speed > 0.5 else (0, 0, 255),
+                    color=(0, 255, 0) if speed > 0.35 else (0, 0, 255),
                     thickness=2,
                 )
 

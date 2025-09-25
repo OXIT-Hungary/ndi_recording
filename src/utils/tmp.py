@@ -32,7 +32,7 @@ def euler_to_visca(pan_deg, tilt_deg):
 def get_cluster_centroid(points: np.array, eps: float = 10.0, min_samples: int = 3):
 
     if len(points) < 2:
-        return None, None, None
+        return [], [], []
 
     # DBSCAN clustering
     db = DBSCAN(eps=eps, min_samples=min_samples).fit(points)
@@ -45,7 +45,7 @@ def get_cluster_centroid(points: np.array, eps: float = 10.0, min_samples: int =
             cluster_counts[label] += 1
 
     if not cluster_counts:
-        return None, None, None
+        return [], [], []
 
     main_cluster = max(cluster_counts, key=cluster_counts.get)
     cluster_mask = labels == main_cluster
