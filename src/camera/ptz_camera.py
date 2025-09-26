@@ -145,9 +145,9 @@ class PTZCamera(Camera, multiprocessing.Process):
                         "-f", "lavfi",
                         "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
                         # Video encoding
-                        "-vcodec", "h264_nvenc",
-                        "-preset", "fast",
-                        "-b:v", "4500k",
+                        "-c:v", "libx264",
+                        "-preset", "slow",
+                        "-crf", "20",
                         # Audio encoding
                         "-c:a", "aac",
                         "-ar", "44100",
@@ -577,7 +577,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                 print(e)
 
             time.sleep(0.01)
-            print('move_thread RUNTIME:', time.time() - start)
+            #print('move_thread RUNTIME:', time.time() - start)
 
         visca.send_command(
             ip=self.ip,

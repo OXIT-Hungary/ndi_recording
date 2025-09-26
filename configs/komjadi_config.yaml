@@ -14,21 +14,21 @@ camera_system:
       ip: 172.17.0.212
       visca_port: 52381
       src: ndi
-      fps: 30
+      fps: 25
       presets:
         left: [65009, 65299]
         center: [0x1000c, 0xfe64]
         right: [66020, 65297]
       camera_params: null
       speed: 0x04
-      stream: False
+      stream: True
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
       ip: 172.17.0.214
       visca_port: 52381
       src: ndi
-      fps: 30
+      fps: 25
       presets:
         left: [66090, 65324]
         center: [0x1002a, 0xfe4d]
