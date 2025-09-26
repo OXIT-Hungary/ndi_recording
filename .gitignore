@@ -129,6 +129,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.production
 .venv
 env/
 venv/
@@ -196,6 +197,9 @@ pip-selfcheck.json
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets
+
+# Files
+*.db
 
 # Local History for Visual Studio Code
 .history/

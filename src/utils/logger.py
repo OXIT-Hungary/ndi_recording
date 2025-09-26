@@ -18,6 +18,16 @@ def setup_logger(log_dir: str, log_file: str = "run.log") -> logging.Logger:
         style="{",
     )
 
+
+
+
+
+
+
+
+
+
+
     console_handler.setFormatter(formatter)
     file_handler.setFormatter(formatter)
 

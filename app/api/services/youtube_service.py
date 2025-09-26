@@ -294,5 +294,4 @@ class YoutubeService:
         }
         return client_config
 
-
 youtube_service = YoutubeService()

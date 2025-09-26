@@ -245,6 +245,9 @@ class CameraSystem:
         except KeyboardInterrupt:
             print.info("Keyboard Interrupt received.")
 
+    def is_running(self):
+        return not self.event_stop.is_set()
+
     def _transform(self, frame: np.ndarray) -> np.ndarray:
         frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0
         return np.expand_dims(np.transpose(frame, (2, 0, 1)), axis=0)
