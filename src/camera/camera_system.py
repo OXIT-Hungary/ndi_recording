@@ -113,7 +113,7 @@ class CameraSystem:
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 5
 
-        output = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), 30, (1500, 593))
+        output = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), 25, (1500, 593))
 
         try:
             cam_pos = 0
@@ -121,7 +121,7 @@ class CameraSystem:
                 start_time = time.time()
 
                 try:
-                    frame_pano = self.pano_queue.get(block=False)
+                    frame_pano = self.pano_queue.get(block=True, timeout=0.5)
                 except queue.Empty:
                     frame_pano = None
 
@@ -157,16 +157,25 @@ class CameraSystem:
                 proj_points, labels, scores = self.game.project_to_bev(boxes, labels, scores)
                 dets = proj_points[(labels == 2) & (scores > 0.4)].tolist()
 
-                cluster_center, cluster_points, mask = get_cluster_centroid(points=np.array(dets), eps=5, min_samples=3)
+                # cluster_center, cluster_points, mask = get_cluster_centroid(points=np.array(dets), eps=5, min_samples=3)
 
                 direction = 0
-                for track in tracks:
+                tracks_to_left, tracks_to_right = [], []
+                for ind, track in enumerate(tracks):
                     # if m:
                     if abs(track.speed[0][0]) > 0.35:
                         if track.get_direction()[0] > 0:
+                            tracks_to_right.append(ind)
                             direction += 1
                         elif track.get_direction()[0] < 0:
+                            tracks_to_left.append(ind)
                             direction -= 1
+
+                cluster_center = []
+                if direction > 2:
+                    cluster_center = np.average(track_positions[tracks_to_right], axis=0)
+                elif direction < -2:
+                    cluster_center = np.average(track_positions[tracks_to_left], axis=0)
 
                 if len(cluster_center) != 0:
                     cluster_center = max(
@@ -244,6 +253,9 @@ class CameraSystem:
             output.release()
         except KeyboardInterrupt:
             print.info("Keyboard Interrupt received.")
+
+    def is_running(self):
+        return not self.event_stop.is_set()
 
     def _transform(self, frame: np.ndarray) -> np.ndarray:
         frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0

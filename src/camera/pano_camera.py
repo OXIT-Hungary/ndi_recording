@@ -38,11 +38,14 @@ class PanoCamrera(Camera, multiprocessing.Process):
         ffmpeg = video_cap = None
         if 'rtmp' in self.config.src or 'rtsp' in self.config.src:
             crop_filter = ""
+
             if crop:
                 crop_filter = f"crop={width}:{height}:{x}:{y},"
+
             vf_filter = (
                 f"{crop_filter}scale={self.config.frame_size[0]}:{self.config.frame_size[1]},fps={self.config.fps}"
             )
+
             # fmt: off
             ffmpeg = subprocess.Popen(
                 [
@@ -79,7 +82,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-loglevel", "error",
                     "-f", "rawvideo",
                     "-pix_fmt", "bgr24",
-                    "-s", f"{width}x{height}",
+                    "-s", f"{self.config.frame_size[0]}x{self.config.frame_size[1]}",
                     "-r", str(self.config.fps),
                     "-hwaccel", "cuda",
                     "-hwaccel_output_format", "cuda",
@@ -93,7 +96,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                 ],
                 stdin=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
-                bufsize=width*height*3 * 5,
+                bufsize=self.config.frame_size[0]*self.config.frame_size[1]*3 * 5,
             )
             # fmt: on
 

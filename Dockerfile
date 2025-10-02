@@ -2,6 +2,7 @@ FROM nvidia/cuda:12.6.2-cudnn-devel-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG FFMPEG_VERSION=4.1.11
+ARG FFMPEG_NVEC_VERSION=11.0.10.3
 
 ENV NVIDIA_DRIVER_CAPABILITIES=all
 
@@ -47,11 +48,11 @@ RUN apt-get update && apt-get install -y \
 
 # Build FFmpeg with NVIDIA GPU support
 WORKDIR /tmp/ffmpeg-build
-RUN wget -q https://github.com/FFmpeg/nv-codec-headers/releases/download/n11.0.10.3/nv-codec-headers-11.0.10.3.tar.gz && \
-    tar -xzf nv-codec-headers-11.0.10.3.tar.gz && \
-    cd nv-codec-headers-11.0.10.3 && \
+RUN wget -q https://github.com/FFmpeg/nv-codec-headers/releases/download/n${FFMPEG_NVEC_VERSION}/nv-codec-headers-${FFMPEG_NVEC_VERSION}.tar.gz && \
+    tar -xzf nv-codec-headers-${FFMPEG_NVEC_VERSION}.tar.gz && \
+    cd nv-codec-headers-${FFMPEG_NVEC_VERSION} && \
     make install && \
-    cd .. && rm -rf nv-codec-headers-11.0.10.3*
+    cd .. && rm -rf nv-codec-headers-${FFMPEG_NVEC_VERSION}*
 
 RUN wget -q https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
     tar -xzf ffmpeg-${FFMPEG_VERSION}.tar.gz && \
@@ -62,6 +63,8 @@ RUN wget -q https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
         --enable-nvenc \
         --enable-cuvid \
         --enable-libnpp \
+        --enable-gpl \
+        --enable-libx264 \
         --prefix=/usr/local \
         --pkg-config-flags="--static" \
         --extra-cflags=-I/usr/local/cuda/include \
@@ -87,8 +90,8 @@ COPY requirements/prod.txt /app/
 # COPY configs /app/configs
 
 # Install Python dependencies in a virtual environment
-RUN python3 -m venv ~/.venvs/app && \
-    ~/.venvs/app/bin/pip install --no-cache-dir -r prod.txt
+RUN python3 -m venv ~/.venv/app && \
+    ~/.venv/app/bin/pip install --no-cache-dir -r prod.txt
 
-CMD ["/bin/bash", "-c", "source ~/.venvs/app/bin/activate && exec bash"]
-#CMD ["/bin/bash", "-c", "source ~/.venvs/app/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+#CMD ["/bin/bash", "-c", "source ~/.venv/app/bin/activate && exec bash"]
+CMD ["/bin/bash", "-c", "source ~/.venv/app/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]

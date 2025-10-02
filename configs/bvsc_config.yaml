@@ -20,7 +20,7 @@ camera_system:
         right: [65777, 65158]
       camera_params: null
       speed: 0x04
-      stream: False
+      stream: True
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
