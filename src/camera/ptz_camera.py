@@ -183,7 +183,6 @@ class PTZCamera(Camera, multiprocessing.Process):
             # Frame timing management
             target_frame_time = 1.0 / actual_fps
             last_frame_time = time.time()
-
             while not self.event_stop.is_set():
                 loop_start = time.time()
 
@@ -296,7 +295,6 @@ class PTZCamera(Camera, multiprocessing.Process):
 
                 if sleep_time > 0:
                     time.sleep(sleep_time)
-
         except Exception as e:
             print(f"PTZ Camera error: {e}")
             import traceback
@@ -575,7 +573,6 @@ class PTZCamera(Camera, multiprocessing.Process):
                 print(e)
 
             time.sleep(0.01)
-            # print('move_thread RUNTIME:', time.time() - start)
 
         visca.send_command(
             ip=self.ip,
