@@ -39,7 +39,7 @@ class Track:
 
         self.confidence = min(self.confidence + 2, 10)
 
-        if self.confidence > 6 and self._status == Track.Status.TENTATIVE:
+        if self.confidence > 4 and self._status == Track.Status.TENTATIVE:
             self._status = Track.Status.CONFIRMED
 
     def get_direction(self):

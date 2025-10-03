@@ -31,21 +31,15 @@ class PanoCamrera(Camera, multiprocessing.Process):
     def run(self) -> None:
 
         crop = self.config.crop
-        if crop:
-            x, y = crop[1], crop[0]
-            width, height = crop[3] - crop[1], crop[2] - crop[0]
+        if self.config.crop is not None:
+            x = self.config.crop[1]
+            y = self.config.crop[0]
+            width = self.config.crop[3] - self.config.crop[1]
+            height = self.config.crop[2] - self.config.crop[0]
 
         ffmpeg = video_cap = None
         if 'rtmp' in self.config.src or 'rtsp' in self.config.src:
-            crop_filter = ""
-
-            if crop:
-                crop_filter = f"crop={width}:{height}:{x}:{y},"
-
-            vf_filter = (
-                f"{crop_filter}scale={self.config.frame_size[0]}:{self.config.frame_size[1]},fps={self.config.fps}"
-            )
-
+            
             # fmt: off
             ffmpeg = subprocess.Popen(
                 [
@@ -58,7 +52,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-pix_fmt", "bgr24",
                     "-vsync", "0",              # Avoid frame duplication
                     "-an",                      # No audio
-                    "-vf", vf_filter,
+                    "-vf", f"fps={self.config.fps}, scale={self.config.frame_size[0]}:{self.config.frame_size[1]}",
                     "-fflags", "nobuffer",      # Reduce latency
                     "-probesize", "32",         # Reduce initial probe size
                     "-flags", "low_delay",      # Reduce decoding delay
@@ -82,7 +76,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     "-loglevel", "error",
                     "-f", "rawvideo",
                     "-pix_fmt", "bgr24",
-                    "-s", f"{self.config.frame_size[0]}x{self.config.frame_size[1]}",
+                    "-s", f"{width}x{height}",
                     "-r", str(self.config.fps),
                     "-hwaccel", "cuda",
                     "-hwaccel_output_format", "cuda",
@@ -104,22 +98,19 @@ class PanoCamrera(Camera, multiprocessing.Process):
             while not self.event_stop.is_set():
                 start_time = time.time()
 
-                frame = None
-                if ffmpeg:
+                if ffmpeg is not None:
                     raw_frame = ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
 
-                    if raw_frame:
-                        frame = np.frombuffer(raw_frame, np.uint8).reshape(
-                            (self.config.frame_size[1], self.config.frame_size[0], 3)
-                        )
+                    if not raw_frame:
+                        continue
+                        # TODO: Should we save empty image?
 
-                        frame = self.undist_image(frame)
-                    else:
-                        frame = np.zeros(
-                            shape=(self.config.frame_size[1], self.config.frame_size[0], 3), dtype=np.uint8
-                        )
+                    frame = np.frombuffer(raw_frame, np.uint8).reshape(
+                        (self.config.frame_size[1], self.config.frame_size[0], 3)
+                    )
 
-                elif video_cap:
+                    frame = self.undist_image(frame)
+                elif video_cap is not None:
                     has_frame, frame = video_cap.read()
 
                     if not has_frame:
