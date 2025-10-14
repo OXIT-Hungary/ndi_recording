@@ -3,6 +3,7 @@ import queue
 import threading
 import time
 import os
+from pathlib import Path
 from datetime import datetime
 
 import cv2
@@ -113,7 +114,9 @@ class CameraSystem:
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 5
 
-        output = cv2.VideoWriter("output.avi", cv2.VideoWriter_fourcc(*'XVID'), 25, (1500, 593))
+        output = cv2.VideoWriter(
+            f"{self.out_path}/{Path(self.out_path).stem}.avi", cv2.VideoWriter_fourcc(*'XVID'), 5, (1500, 593)
+        )
 
         try:
             cam_pos = 0
