@@ -19,7 +19,7 @@ def power_off(ip, port: int = 52381) -> None:
         send_command(ip=ip, command=bytes.fromhex("81 01 04 00 03 FF"), wait_for_response=True, timeout=15, port=port)
 
 
-def send_inquiry(ip, command, timeout: float = 10.0, port: int = 52381):
+def send_inquiry(ip, command, timeout: float = 0.5, port: int = 52381):
     """
     Sends a VISCA inquiry command to the camera and receives the response.
     """
@@ -30,11 +30,11 @@ def send_inquiry(ip, command, timeout: float = 10.0, port: int = 52381):
             response, _ = sock.recvfrom(1024)  # Receive the response
             return response
         except TimeoutError as e:
-            logger.error("No response from camera. Camera IP: %s", ip)
-            # raise TimeoutError("[ERROR] No response from camera. Camera IP: %s", ip) from e
+            #logger.error(e)
+            pass
         except Exception as e:
             logger.error("Error: %s", e)
-            raise Exception(f"Error: {e}") from e
+            raise e
 
 
 def send_command(ip, command, wait_for_response: bool = False, timeout: float = 2.0, port: int = 52381):

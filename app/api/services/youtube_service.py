@@ -252,8 +252,11 @@ class YoutubeService:
 
         try:
             stream_id = self.create_live_stream(stream_details)
+            time.sleep(2)
             broadcast_id = self.create_live_broadcast(stream_details, stream_id)
+            time.sleep(2)
             self.start_live_broadcast(broadcast_id)
+            time.sleep(2)
 
             # Retrieve and return stream details
             stream_info = self.get_stream_details(broadcast_id)
@@ -290,6 +293,5 @@ class YoutubeService:
             }
         }
         return client_config
-
 
 youtube_service = YoutubeService()

@@ -5,7 +5,7 @@ from sklearn.cluster import DBSCAN
 
 
 def hex_to_signed_int(hex_value):
-    #int_value = int(hex_value, 16)
+    # int_value = int(hex_value, 16)
     if hex_value > 0x7FFF:  # Handle two’s complement negative values
         hex_value -= 0x10000
     return hex_value
@@ -32,7 +32,7 @@ def euler_to_visca(pan_deg, tilt_deg):
 def get_cluster_centroid(points: np.array, eps: float = 10.0, min_samples: int = 3):
 
     if len(points) < 2:
-        return None, None
+        return [], [], []
 
     # DBSCAN clustering
     db = DBSCAN(eps=eps, min_samples=min_samples).fit(points)
@@ -45,7 +45,7 @@ def get_cluster_centroid(points: np.array, eps: float = 10.0, min_samples: int =
             cluster_counts[label] += 1
 
     if not cluster_counts:
-        return None, None
+        return [], [], []
 
     main_cluster = max(cluster_counts, key=cluster_counts.get)
     cluster_mask = labels == main_cluster
@@ -54,7 +54,7 @@ def get_cluster_centroid(points: np.array, eps: float = 10.0, min_samples: int =
     # Calculate gravity center
     cluster_center = cluster_points.mean(axis=0)
 
-    return cluster_center, cluster_points
+    return cluster_center, cluster_points, cluster_mask
 
 
 def calc_pan_shift(bev_x_axis_line: int, x_axis_value: int, pan_distance: float) -> float:

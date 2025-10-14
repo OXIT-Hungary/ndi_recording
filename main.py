@@ -1,5 +1,8 @@
 import multiprocessing
 import time
+import schedule
+import yaml
+import functools
 from datetime import datetime
 
 # import psutil
@@ -9,29 +12,30 @@ from src.camera.camera_system import CameraSystem
 from src.config import Config, load_config
 from src.utils.logger import setup_logger
 
+
 # p = psutil.Process(os.getpid())
 # p.nice(value=-12)
 
 
-def schedule(start_time: datetime, end_time: datetime) -> None:
+# def schedule(start_time: datetime, end_time: datetime) -> None:
 
-    sleep_time = int((start_time - datetime.now()).total_seconds())
-    if sleep_time <= 0:
-        return
+#     sleep_time = int((start_time - datetime.now()).total_seconds())
+#     if sleep_time <= 0:
+#         return
 
-    hours, remainder = divmod(sleep_time, 3600)
-    minutes, seconds = divmod(remainder, 60)
+#     hours, remainder = divmod(sleep_time, 3600)
+#     minutes, seconds = divmod(remainder, 60)
 
-    logger.info(
-        f"Waiting for {hours:02d}:{minutes:02d}:{seconds:02d} (hh:mm:ss) until {end_time.strftime('%Y.%m.%d %H:%M:%S')}."
-    )
+#     logger.info(
+#         f"Waiting for {hours:02d}:{minutes:02d}:{seconds:02d} (hh:mm:ss) until {end_time.strftime('%Y.%m.%d %H:%M:%S')}."
+#     )
 
-    with tqdm(total=sleep_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
-        for _ in range(int(sleep_time)):
-            time.sleep(1)
-            progress.update(1)
+#     with tqdm(total=sleep_time, bar_format="{l_bar}{bar} [Elapsed: {elapsed}, Remaining: {remaining}]") as progress:
+#         for _ in range(int(sleep_time)):
+#             time.sleep(1)
+#             progress.update(1)
 
-    logger.info(f"Finished waiting.")
+#     logger.info(f"Finished waiting.")
 
 
 def main(config: Config):
@@ -39,7 +43,7 @@ def main(config: Config):
     camera_system = CameraSystem(config=config)
     camera_system.start()
 
-    time.sleep(1800)
+    time.sleep(3300)
     camera_system.stop()
 
     return 0
@@ -57,6 +61,7 @@ if __name__ == "__main__":
     parser.add_argument("--start_time", type=str, required=False, default=None)
     parser.add_argument("--end_time", type=str, required=False, default=None)
     parser.add_argument("--duration", type=str, required=False, default=None)
+    parser.add_argument("--scheduled", action="store_true", required=False)
 
     args = parser.parse_args()
     cfg = load_config(file_path=args.config)
@@ -73,6 +78,20 @@ if __name__ == "__main__":
 
     # logger = setup_logger(log_dir=cfg.out_path)
 
-    schedule(cfg.schedule.start_time, cfg.schedule.end_time)
+    #schedule(cfg.schedule.start_time, cfg.schedule.end_time)
 
-    main(config=cfg)
+    if args.scheduled:
+        with open("configs/schedule.yaml", "r") as file:
+            config = yaml.safe_load(file)
+        times = config["times"]
+
+        # Schedule the job at each time
+        for t in times:
+            schedule.every().day.at(t).do(functools.partial(main, config=cfg))
+
+        # Keep running and executing pending scheduled jobs
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+    else:
+        main(config=cfg)
