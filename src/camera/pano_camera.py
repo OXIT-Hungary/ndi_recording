@@ -40,7 +40,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
 
         ffmpeg = video_cap = None
         if 'rtmp' in self.config.src or 'rtsp' in self.config.src:
-            vf_filter = f"fps={self.config.fps},scale={width}:{height}"
+            vf_filter = f"fps={self.config.fps},scale={self.config.frame_size[0]}:{self.config.frame_size[1]}"
 
             # fmt: off
             ffmpeg = subprocess.Popen(
@@ -104,7 +104,7 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     raw_frame = ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
 
                     if raw_frame:
-                        frame = np.frombuffer(raw_frame, np.uint8).reshape((height, width, 3))
+                        frame = np.frombuffer(raw_frame, np.uint8).reshape((self.config.frame_size[1], self.config.frame_size[0], 3))
                         frame = self.undist_image(frame)
                     else:
                         frame = np.zeros(shape=(height, width, 3), dtype=np.uint8)
