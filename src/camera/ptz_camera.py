@@ -57,8 +57,8 @@ class PTZCamera(Camera, multiprocessing.Process):
         self.ffmpeg = None
         self.ffmpeg_stream = None
         self.stream_token = stream_token
-
         self.repeat_last_frame = True
+        self.is_healthy = True
 
     def _create_receiver(self):
 
@@ -198,36 +198,6 @@ class PTZCamera(Camera, multiprocessing.Process):
                     last_frame = frame
                     none_frame_count = 0
 
-                    # Check if processes are still running
-                    if self.ffmpeg.poll() is not None:
-                        print(f"FFmpeg local recording process died with code: {self.ffmpeg.poll()}")
-                        break
-
-                    if self.ffmpeg_stream and self.ffmpeg_stream.poll() is not None:
-                        exit_code = self.ffmpeg_stream.poll()
-                        print(f"FFmpeg streaming process died with code: {exit_code}")
-
-                        # Read stderr for detailed error info
-                        try:
-                            stdout, stderr = self.ffmpeg_stream.communicate(timeout=1)
-                            if stderr:
-                                print(f"FFmpeg stderr: {stderr.decode().strip()}")
-                            if stdout:
-                                print(f"FFmpeg stdout: {stdout.decode().strip()}")
-                        except subprocess.TimeoutExpired:
-                            # Force read what's available
-                            if self.ffmpeg_stream.stderr:
-                                try:
-                                    error_data = self.ffmpeg_stream.stderr.read()
-                                    if error_data:
-                                        print(f"FFmpeg error: {error_data.decode().strip()}")
-                                except:
-                                    pass
-
-                        # Break the loop to prevent endless restart attempts
-                        print("Stopping stream due to repeated FFmpeg failures")
-                        break
-
                     # Write to local recording
                     try:
                         if self.ffmpeg.stdin and not self.ffmpeg.stdin.closed:
@@ -239,9 +209,7 @@ class PTZCamera(Camera, multiprocessing.Process):
                         print(f"Local recording pipe error: {e}")
 
                     # Write to stream with better error handling
-
                     if self.ffmpeg_stream and self.ffmpeg_stream.stdin and not self.ffmpeg_stream.stdin.closed:
-
                         try:
                             self.ffmpeg_stream.stdin.write(frame_bytes)
 
@@ -288,6 +256,37 @@ class PTZCamera(Camera, multiprocessing.Process):
                                     last_frame_time = current_time
                                 except (BrokenPipeError, OSError):
                                     print("Broken pipe error on frame repeat")
+
+                # Check if processes are still running - ADD THIS HERE
+                if self.ffmpeg.poll() is not None:
+                    print(f"FFmpeg local recording process died with code: {self.ffmpeg.poll()}")
+                    self.is_healthy = False
+                    break
+
+                if self.ffmpeg_stream and self.ffmpeg_stream.poll() is not None:
+                    exit_code = self.ffmpeg_stream.poll()
+                    print(f"FFmpeg streaming process died with code: {exit_code}")
+                    self.is_healthy = False
+
+                    # Read stderr for detailed error info
+                    try:
+                        stdout, stderr = self.ffmpeg_stream.communicate(timeout=1)
+                        if stderr:
+                            print(f"FFmpeg stderr: {stderr.decode().strip()}")
+                        if stdout:
+                            print(f"FFmpeg stdout: {stdout.decode().strip()}")
+                    except subprocess.TimeoutExpired:
+                        # Force read what's available
+                        if self.ffmpeg_stream.stderr:
+                            try:
+                                error_data = self.ffmpeg_stream.stderr.read()
+                                if error_data:
+                                    print(f"FFmpeg error: {error_data.decode().strip()}")
+                            except:
+                                pass
+
+                    print("Stopping stream due to repeated FFmpeg failures")
+                    break
 
                 # Improved frame rate timing
                 elapsed = time.time() - loop_start

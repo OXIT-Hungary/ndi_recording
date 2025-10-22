@@ -258,7 +258,23 @@ class CameraSystem:
             print.info("Keyboard Interrupt received.")
 
     def is_running(self):
-        return not self.event_stop.is_set()
+        return not self.event_stop.is_set() and self.are_cameras_healthy()
+    
+    def are_cameras_healthy(self):
+        """Check if all enabled cameras are actually running and healthy"""
+        if self.event_stop.is_set():
+            return False
+        
+        for name, camera in self.cameras.items():
+            if hasattr(camera, 'is_alive') and not camera.is_alive():
+                return False
+            # For PTZ cameras, also check if FFmpeg processes are still running
+            if hasattr(camera, 'ffmpeg') and camera.ffmpeg and camera.ffmpeg.poll() is not None:
+                return False
+            if hasattr(camera, 'ffmpeg_stream') and camera.ffmpeg_stream and camera.ffmpeg_stream.poll() is not None:
+                return False
+        
+        return True
 
     def _transform(self, frame: np.ndarray) -> np.ndarray:
         frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR).astype(np.float32) / 255.0

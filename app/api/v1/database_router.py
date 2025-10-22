@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, HTTPException, Depends
 import logging
 from ...schemas.match import Match
@@ -39,11 +40,12 @@ class DatabaseRouter:
 
 class Database:
 
-    _path = 'metadata.db'
+    _database_path = 'metadata.db'
+    _txt_path = 'metadata.txt'
 
     @staticmethod
     def _create_table() -> None:
-        with open_db(Database._path) as cursor:
+        with open_db(Database._database_path) as cursor:
             try:
                 cursor.execute("""CREATE TABLE IF NOT EXISTS matches (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +69,7 @@ class Database:
         Database._create_table()
 
         try:
-            with open_db(Database._path) as cursor:
+            with open_db(Database._database_path) as cursor:
                 cursor.execute("""INSERT OR IGNORE INTO matches 
                     (division, league, home_team, away_team, playing_field, scheduled_match_time) 
                     VALUES (?, ?, ?, ?, ?, ?)""",
@@ -87,7 +89,7 @@ class Database:
         matches = []
 
         try:
-            with open_db(Database._path) as cursor:
+            with open_db(Database._database_path) as cursor:
                 if cursor is None:
                     logging.error("Database connection failed.")
                     return []
@@ -119,3 +121,28 @@ class Database:
         except Exception as e:
             logging.error(f"Unexpected error retrieving matches: {e}")
             return []
+        
+    @staticmethod
+    def save_to_txt(payload: StreamStartRequest) -> bool:
+        try:
+            # get the keys for the fields
+            fields = list(payload.model_fields.keys())
+            # Get values for those fields, except the last value.
+            values = [getattr(payload, key, '') for key in fields[:-1]]
+
+            file_exists = os.path.exists(Database._txt_path)
+
+            with open(Database._txt_path, 'a') as f:
+                if not file_exists:
+                    # Write header row, except the last value.
+                    f.write('\t'.join([key.upper() for key in fields[:-1]]) + '\n')
+
+                # Write values row.
+                f.write('\t'.join(str(v) if v is not None else '' for v in values) + '\n')
+
+            return True  # Successful write
+        
+        except Exception as e:
+            print(f"Error saving row: {e}")
+
+            return False
