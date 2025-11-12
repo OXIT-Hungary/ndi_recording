@@ -28,6 +28,10 @@ class PanoCamrera(Camera, multiprocessing.Process):
 
         self.sleep_time = 1 / config.fps
 
+        self.ffmpeg = None
+        self.empty_frame_count = 0
+        self.efc_threshold = 5
+
     def run(self) -> None:
 
         crop = self.config.crop
@@ -38,33 +42,11 @@ class PanoCamrera(Camera, multiprocessing.Process):
             width = self.config.frame_size[0]
             height = self.config.frame_size[1]
 
-        ffmpeg = video_cap = None
+        video_cap = None
         if 'rtmp' in self.config.src or 'rtsp' in self.config.src:
-            vf_filter = f"fps={self.config.fps},scale={self.config.frame_size[0]}:{self.config.frame_size[1]}"
 
-            # fmt: off
-            ffmpeg = subprocess.Popen(
-                [
-                    "ffmpeg",
-                    "-hide_banner",
-                    "-loglevel", "error",
-                    "-rtsp_transport", "tcp",   # Use TCP for better stability
-                    "-i", self.config.src,
-                    "-f", "rawvideo",           # Output raw video
-                    "-pix_fmt", "bgr24",
-                    "-vsync", "0",              # Avoid frame duplication
-                    "-an",                      # No audio
-                    "-vf", vf_filter,
-                    "-fflags", "nobuffer",      # Reduce latency
-                    "-probesize", "32",         # Reduce initial probe size
-                    "-flags", "low_delay",      # Reduce decoding delay
-                    "-",
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                bufsize=self.config.frame_size[0] * self.config.frame_size[1] * 3 * 5,
-            )
-            # fmt: on
+            self.ffmpeg = self.ffmpeg_start()
+
         elif 'mp4' in self.config.src:
             video_cap = cv2.VideoCapture(self.config.src)
 
@@ -100,13 +82,15 @@ class PanoCamrera(Camera, multiprocessing.Process):
             while not self.event_stop.is_set():
                 start_time = time.time()
 
-                if ffmpeg is not None:
-                    raw_frame = ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
+                if self.ffmpeg is not None:
+                    raw_frame = self.ffmpeg.stdout.read(self.config.frame_size[0] * self.config.frame_size[1] * 3)
 
                     if raw_frame:
                         frame = np.frombuffer(raw_frame, np.uint8).reshape((self.config.frame_size[1], self.config.frame_size[0], 3))
                         frame = self.undist_image(frame)
                     else:
+                        #print("FRAME IS EMPTY!!!!!", raw_frame)
+                        self.empty_frame_count += 1
                         frame = np.zeros(shape=(height, width, 3), dtype=np.uint8)
                 elif video_cap is not None:
                     has_frame, frame = video_cap.read()
@@ -128,13 +112,17 @@ class PanoCamrera(Camera, multiprocessing.Process):
                     self.queue.get()
                 self.queue.put_nowait(frame)
 
+                if self.empty_frame_count >= self.efc_threshold:
+                    print("RESTARTING FFMPEG CONNECTION!!!")
+                    self.ffmpeg_restart()
+
                 time.sleep(max(self.sleep_time - (time.time() - start_time), 0))
         except Exception as e:
             print(f"Pano Camera: {e}")
         finally:
-            if ffmpeg:
-                ffmpeg.stdout.flush()
-                ffmpeg.stdout.close()
+            if self.ffmpeg:
+                self.ffmpeg.stdout.flush()
+                self.ffmpeg.stdout.close()
             elif video_cap:
                 video_cap.release()
 
@@ -149,3 +137,42 @@ class PanoCamrera(Camera, multiprocessing.Process):
         )
 
         return undistorted
+    
+    def ffmpeg_start(self):
+        vf_filter = f"fps={self.config.fps},scale={self.config.frame_size[0]}:{self.config.frame_size[1]}"
+
+        # fmt: off
+        _ffmpeg = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel", "error",
+                "-rtsp_transport", "tcp",   # Use TCP for better stability
+                "-i", self.config.src,
+                "-f", "rawvideo",           # Output raw video
+                "-pix_fmt", "bgr24",
+                "-vsync", "0",              # Avoid frame duplication
+                "-an",                      # No audio
+                "-vf", vf_filter,
+                "-fflags", "nobuffer",      # Reduce latency
+                "-probesize", "32",         # Reduce initial probe size
+                "-flags", "low_delay",      # Reduce decoding delay
+                "-",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=self.config.frame_size[0] * self.config.frame_size[1] * 3 * 5,
+        )
+
+        return _ffmpeg
+    
+    def ffmpeg_restart(self):
+
+        try:
+            self.ffmpeg.kill()
+        except Exception:
+            pass
+
+        self.ffmpeg = self.ffmpeg_start()
+
+        self.empty_frame_count = 0
