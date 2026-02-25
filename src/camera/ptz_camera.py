@@ -10,6 +10,9 @@ import struct
 import NDIlib as ndi
 import numpy as np
 
+import requests
+import json
+
 import select
 import errno
 
@@ -91,12 +94,76 @@ class PTZCamera(Camera, multiprocessing.Process):
             sources = ndi.find_get_current_sources(self._ndi_find)
 
         return sources
+    
+    def restart_and_stream(self, camera_ip, stream_key, rtmp_host, rtmp_port, wait_timeout):
+
+        print(camera_ip, stream_key, rtmp_host, rtmp_port, wait_timeout)
+
+        base_url = f"http://{camera_ip}/ajaxcom"
+
+        def post_cmd(payload, timeout=5):
+            r = requests.post(
+                base_url,
+                data="szCmd=" + json.dumps(payload),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=timeout,
+            )
+            print("Camera response:", r.text)
+            return r.json()
+
+
+        # {"SetEnv":{"Audio":{"nAEncType":7,"nChannel":2,"bEnable":1,"nAudioDelay":0,"nBitRate":128,"nInpVolume":3,"nSampleBits":16,"nAudioSmstMask":[33554688,33554816],"byAudioCodecList":[7,0],"nSampleRate":48000}}}
+        # Enable audio (with gain + encoding settings)
+        post_cmd({
+            "SetEnv": {
+                "Audio": {
+                        "bEnable": 1
+                    }
+            }
+        })
+
+        # Reboot
+        try:
+            post_cmd({"SysCtrl": {"Reboot": {}}})
+        except:
+            pass  # expected disconnect
+
+        # Wait for camera to come back
+        start = time.time()
+        while time.time() - start < wait_timeout:
+            try:
+                r = post_cmd({"SysCtrl": {"PtzCtrl": {"nChanel": 0, "szPtzCmd":"preset_call","byValue":0}}}, timeout=3)
+                if r.get("nRetVal") == 0:
+                    print("Camera is back online.")
+                    break
+            except:
+                pass
+            time.sleep(3)
+        else:
+            raise RuntimeError("Camera did not return within timeout.")
+
+        # Start RTMP stream
+        return post_cmd({
+            "SetEnv": {
+                "StreamPublish": [{
+                    "stMaster": {
+                        "bEnable": 1,
+                        "nProtolType": 2,
+                        "szHostUrl": rtmp_host,
+                        "wHostPort": rtmp_port,
+                        "szStreamName": stream_key
+                    },
+                    "nChannel": 0
+                }]
+            }
+        })
 
     def run(self) -> None:
         self._thread_move = threading.Thread(target=self._move_thread, daemon=True)
         self._thread_move.start()
 
         try:
+
             self.receiver = self._create_receiver()
 
             # IMPORTANT: Avonic CM93-NDI outputs at 60fps!
@@ -107,27 +174,29 @@ class PTZCamera(Camera, multiprocessing.Process):
             # target_stream_fps = 30  # Use this for YouTube if bandwidth is limited
 
             # fmt: off
-            self.ffmpeg = subprocess.Popen(
-                     [
-                        "ffmpeg",
-                        "-hide_banner",
-                        "-loglevel", "error",
-                        "-f", "rawvideo",
-                        "-pix_fmt", "bgr24",
-                        "-s", "1920x1080",
-                        "-r", str(self.config.fps),
-                        "-hwaccel", "cuda",
-                        "-hwaccel_output_format", "cuda",
-                        "-i", "pipe:",
-                        "-c:v", self.config.codec,
-                        "-pix_fmt", "yuv420p",
-                        "-b:v", f"{self.config.bitrate}k",
-                        "-preset", "fast",
-                        "-profile:v", "high",
-                        os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.mp4"),
-                    ],
-                    stdin=subprocess.PIPE,
-                )
+            if self.config.save:
+                self.ffmpeg = subprocess.Popen(
+                        [
+                            "ffmpeg",
+                            "-hide_banner",
+                            "-loglevel", "error",
+                            "-f", "rawvideo",
+                            "-pix_fmt", "bgr24",
+                            "-s", "1920x1080",
+                            "-r", str(self.config.fps),
+                            "-hwaccel", "cuda",
+                            "-hwaccel_output_format", "cuda",
+                            "-i", "pipe:",
+                            "-c:v", self.config.codec,
+                            "-pix_fmt", "yuv420p",
+                            "-b:v", f"{self.config.bitrate}k",
+                            "-preset", "fast",
+                            "-profile:v", "high",
+                            os.path.join(self.out_path, f"{Path(self.out_path).stem}_{self.name}.mp4"),
+                        ],
+                        stdin=subprocess.PIPE,
+                    )
+
             
             if self.config.stream:
                 # Start with conservative settings for debugging
@@ -145,9 +214,9 @@ class PTZCamera(Camera, multiprocessing.Process):
                         "-f", "lavfi",
                         "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
                         # Video encoding
-                        "-c:v", "libx264",
-                        "-preset", "slow",
-                        "-crf", "20",
+                        "-vcodec", "h264_nvenc",
+                        "-preset", "fast",
+                        "-b:v", "4500k",
                         # Audio encoding
                         "-c:a", "aac",
                         "-ar", "44100",
@@ -171,7 +240,10 @@ class PTZCamera(Camera, multiprocessing.Process):
                 except Exception as e:
                     print(f"Failed to start FFmpeg streaming process: {e}")
                     self.ffmpeg_stream = None
-            # fmt: on
+
+            if self.config.ptz_stream:
+                self.restart_and_stream(self.ip, self.stream_token, "rtmp://a.rtmp.youtube.com/live2", 1935, 120 )
+                
 
             # Improved frame tracking
             dropped_frames = 0
@@ -200,7 +272,7 @@ class PTZCamera(Camera, multiprocessing.Process):
 
                     # Write to local recording
                     try:
-                        if self.ffmpeg.stdin and not self.ffmpeg.stdin.closed:
+                        if self.config.save and self.ffmpeg.stdin and not self.ffmpeg.stdin.closed:
                             self.ffmpeg.stdin.write(frame_bytes)
                             # Less frequent flushing for local recording
                             if frame_count % 60 == 0:  # Every 2 seconds at 30fps
@@ -258,7 +330,8 @@ class PTZCamera(Camera, multiprocessing.Process):
                                     print("Broken pipe error on frame repeat")
 
                 # Check if processes are still running - ADD THIS HERE
-                if self.ffmpeg.poll() is not None:
+                #if self.ffmpeg.poll() is not None:
+                if self.ffmpeg and self.ffmpeg.poll() is not None:
                     print(f"FFmpeg local recording process died with code: {self.ffmpeg.poll()}")
                     self.is_healthy = False
                     break

@@ -38,6 +38,8 @@ class CameraSystem:
         self.camera_queues = {}
         self.camera_events = {}
 
+        #self.log_idx = 0
+
         if self.config.pano_camera.enable:
             self.cameras['pano'] = PanoCamrera(
                 config=self.config.pano_camera,
@@ -114,9 +116,9 @@ class CameraSystem:
     def _detect_and_track(self) -> None:
         sleep_time = 1 / 5
 
-        output = cv2.VideoWriter(
-            f"{self.out_path}/{Path(self.out_path).stem}.avi", cv2.VideoWriter_fourcc(*'XVID'), 5, (1500, 593)
-        )
+        # output = cv2.VideoWriter(
+        #     f"{self.out_path}/{Path(self.out_path).stem}.avi", cv2.VideoWriter_fourcc(*'XVID'), 5, (1500, 662) #1500,662
+        # )
 
         try:
             cam_pos = 0
@@ -249,11 +251,19 @@ class CameraSystem:
 
                 img_out = np.concatenate((img_pano, new_image), axis=0)
 
-                output.write(img_out)
+                #output.write(img_out)
+
+                # try:
+                #     with open(f'{self.out_path}/bev_log.txt', "a") as f:
+                #         f.write(f'frame:{self.log_idx} ; tracked_players: {len(track_positions)} ; cluster_centers: {cluster_center} ; direction: {direction} \n')
+                # except Exception as err:
+                #     print(f'Error: {err} ; ErrorType: {type(err)}')
+                
+                #self.log_idx += 1
 
                 time.sleep(max(sleep_time - (time.time() - start_time), 0))
 
-            output.release()
+            #output.release()
         except KeyboardInterrupt:
             print.info("Keyboard Interrupt received.")
 

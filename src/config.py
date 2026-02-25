@@ -57,6 +57,8 @@ class PTZConfig:
         self.presets = config_dict.get("presets", None)
         self.speed = config_dict.get("speed", 0x10)
         self.stream = config_dict.get("stream", False)
+        self.ptz_stream = config_dict.get("ptz_stream", False)
+        self.save = config_dict.get("save", False)
 
         camera_params_path = config_dict.get("camera_params", None)
         if camera_params_path:
@@ -71,6 +73,7 @@ class PanoramaConfig:
         self.enable = config_dict.get("enable", False)
         self.src = config_dict.get("src")
         self.crop = config_dict.get("crop", None)
+        self.distort = config_dict.get("distort", None)
         self.fps = config_dict.get("fps", 15)
         self.frame_size = config_dict.get("frame_size", [4096, 1484])
 

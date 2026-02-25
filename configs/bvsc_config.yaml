@@ -21,6 +21,8 @@ camera_system:
       camera_params: null
       speed: 0x04
       stream: True
+      ptz_stream: False
+      save: False
     ptz2:
       name: Avonic_CM93_NDI
       enable: True
@@ -45,7 +47,7 @@ camera_system:
       fps: 5
       camera_params: null #./camera_params/bvsc/pano_params_bvsc.npy
       distort: "./camera_params/bvsc/remap_4096x1484_fov115.npz"
-      save: True
+      save: False
   
   pano_onnx: ./models/rtdetrv2_pano.onnx
   track_threshold: 1.0
