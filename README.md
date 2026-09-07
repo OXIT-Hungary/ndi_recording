@@ -13,19 +13,9 @@ imported by `wp_core`/`wp_gsr`/`tracknet` — a sibling capture-and-control proj
 pipeline. (`wp_core`'s own multi-camera match pipeline consumes *recordings* this system could
 produce, but there is no code-level dependency between them.)
 
-Two independent ways to run it exist side by side:
-
-1. **`main.py`** (repo root) — a CLI script: build a `Config` from a YAML file, run a `CameraSystem` for
-   a fixed duration (or on a `schedule` package day-of cron), then stop. No web server, no auth, no
-   persistence — the original/simple mode.
-2. **`app/` (FastAPI service)** — `uvicorn app.main:app`, the mode actually shipped in `Dockerfile`'s
-   `CMD`. Exposes an HTTP API (`POST /api/v1/manual_control/start-stream` /
-   `.../stop-stream`) to start/stop the same `CameraSystem` on demand, guarded by an API-key header,
-   with match metadata persisted to SQLite/`metadata.txt`. **This is the live entry point in
-   production** — `main.py` is effectively the earlier/manual-testing path.
-
-Both entry points construct the same `src.camera.camera_system.CameraSystem`; the FastAPI layer is a
-thin start/stop/status wrapper around it, not a reimplementation.
+To run/build it:
+- "make build"
+- "make run"
 
 ## Repo layout
 
